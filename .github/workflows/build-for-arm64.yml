@@ -47,3 +47,15 @@ jobs:
         path: |
           rootfs
           wrapper
+  
+    - name: Create Release Zip File
+      run: zip -r Wrapper.arm64.${{ steps.vars.outputs.sha_short }}.zip rootfs/ wrapper
+      
+    - name: Create Release
+      uses: softprops/action-gh-release@v2
+      with:
+        files: Wrapper.arm64.${{ steps.vars.outputs.sha_short }}.zip
+        body: ${{ github.event.head_commit.message }}
+        prerelease: true
+        name: Wrapper.arm64.${{ steps.vars.outputs.sha_short }}
+        tag_name: arm64
