@@ -1,9 +1,12 @@
 # wrapper
 A tool to decrypt Apple Music's music. An active subscription is still needed.
+
 Only support Linux x86_64 and arm64.
 
 # Install
-Get the pre-built version from this project's Actions. Or you can refer to the Actions configuration file for compilation.
+Get the pre-built version from this project's Actions. 
+
+Or you can refer to the Actions configuration file for compilation.
 
 # Usage
 ```
