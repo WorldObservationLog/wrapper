@@ -9,8 +9,8 @@ set(CMAKE_CXX_STANDARD 11)
 set(ANDROID_NDK_PATH "$ENV{HOME}/android-ndk-r23b")
 set(TOOLCHAIN "${ANDROID_NDK_PATH}/toolchains/llvm/prebuilt/linux-x86_64")
 
-set(CMAKE_C_COMPILER "${TOOLCHAIN}/bin/x86_64-linux-android22-clang")
-set(CMAKE_CXX_COMPILER "${TOOLCHAIN}/bin/x86_64-linux-android22-clang++")
+set(CMAKE_C_COMPILER "${TOOLCHAIN}/bin/aarch64-linux-android22-clang")
+set(CMAKE_CXX_COMPILER "${TOOLCHAIN}/bin/aarch64-linux-android22-clang++")
 set(C_COMPILER "${TOOLCHAIN}/bin/clang")
 
 set(CMAKE_C_FLAGS "-Wall -Werror -O3")
@@ -51,7 +51,7 @@ ExternalProject_Add(
     PREFIX ${CMAKE_BINARY_DIR}
     SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}
     CONFIGURE_COMMAND ""
-    BUILD_COMMAND ${C_COMPILER} -O3 -Wall -o wrapper ${WRAPPER_SOURCE}
+    BUILD_COMMAND aarch64-linux-gnu-gcc -o wrapper ${WRAPPER_SOURCE}
     BUILD_IN_SOURCE 1
     INSTALL_COMMAND ""
     DEPENDS main

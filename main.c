@@ -147,80 +147,31 @@ static inline void init() {
     // _ZN8FootHill24defaultContextIdentifierEv(foothill);
 
     struct shared_ptr GUID;
-    _ZN17storeservicescore10DeviceGUID8instanceEv(&GUID);
+    _ZN17storeservicescore10DeviceGUID8instanceEvASM(&GUID);
 
     static uint8_t ret[88];
     static unsigned int conf3 = 29;
     static uint8_t conf4 = 1;
-    _ZN17storeservicescore10DeviceGUID9configureERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEES9_RKjRKb(
+    _ZN17storeservicescore10DeviceGUID9configureERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEES9_RKjRKbASM(
         &ret, GUID.obj, &conf1, &conf2, &conf3, &conf4);
 }
 
 static inline struct shared_ptr init_ctx() {
     fprintf(stderr, "[+] initializing ctx...\n");
-    union std_string strBuf =
-        new_std_string("/data/data/com.apple.android.music/files/mpl_db");
 
-    struct shared_ptr reqCtx;
-    _ZNSt6__ndk110shared_ptrIN17storeservicescore14RequestContextEE11make_sharedIJRNS_12basic_stringIcNS_11char_traitsIcEENS_9allocatorIcEEEEEEES3_DpOT_(
-        &reqCtx, &strBuf);
+    struct shared_ptr *reqCtx = newRequestContext("/data/data/com.apple.android.music/files/mpl_db");
+    struct shared_ptr *reqCtxCfg = getRequestContextConfig();
 
-    static uint8_t ptr[480];
-    *(void **)(ptr) =
-        &_ZTVNSt6__ndk120__shared_ptr_emplaceIN17storeservicescore20RequestContextConfigENS_9allocatorIS2_EEEE +
-        2;
-    struct shared_ptr reqCtxCfg = {.obj = ptr + 32, .ctrl_blk = ptr};
+    prepareRequestContextConfig(reqCtxCfg);
+    configureRequestContext(reqCtx);
 
-    _ZN17storeservicescore20RequestContextConfigC2Ev(reqCtxCfg.obj);
-	// _ZN17storeservicescore20RequestContextConfig9setCPFlagEb(reqCtx.obj, 1);
-    _ZN17storeservicescore20RequestContextConfig20setBaseDirectoryPathERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(
-        reqCtxCfg.obj, &strBuf);
-    strBuf = new_std_string("Music");
-    _ZN17storeservicescore20RequestContextConfig19setClientIdentifierERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(
-        reqCtxCfg.obj, &strBuf);
-    strBuf = new_std_string("4.9");
-    _ZN17storeservicescore20RequestContextConfig20setVersionIdentifierERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(
-        reqCtxCfg.obj, &strBuf);
-    strBuf = new_std_string("Android");
-    _ZN17storeservicescore20RequestContextConfig21setPlatformIdentifierERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(
-        reqCtxCfg.obj, &strBuf);
-    strBuf = new_std_string("10");
-    _ZN17storeservicescore20RequestContextConfig17setProductVersionERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(
-        reqCtxCfg.obj, &strBuf);
-    strBuf = new_std_string("Samsung S9");
-    _ZN17storeservicescore20RequestContextConfig14setDeviceModelERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(
-        reqCtxCfg.obj, &strBuf);
-    strBuf = new_std_string("7663313");
-    _ZN17storeservicescore20RequestContextConfig15setBuildVersionERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(
-        reqCtxCfg.obj, &strBuf);
-    strBuf = new_std_string("en-US");
-    _ZN17storeservicescore20RequestContextConfig19setLocaleIdentifierERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(
-        reqCtxCfg.obj, &strBuf);
-    _ZN17storeservicescore20RequestContextConfig21setLanguageIdentifierERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(
-        reqCtxCfg.obj, &strBuf);
-
-    _ZN21RequestContextManager9configureERKNSt6__ndk110shared_ptrIN17storeservicescore14RequestContextEEE(
-        &reqCtx);
     static uint8_t buf[88];
-    _ZN17storeservicescore14RequestContext4initERKNSt6__ndk110shared_ptrINS_20RequestContextConfigEEE(
-        &buf, reqCtx.obj, &reqCtxCfg);
-    strBuf = new_std_string("/data/data/com.apple.android.music/files");
-    _ZN17storeservicescore14RequestContext24setFairPlayDirectoryPathERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(
-        reqCtx.obj, &strBuf);
+    initRequestContext(buf, reqCtx, reqCtxCfg);
+    setFairPlayDirectoryPath(reqCtx, "/data/data/com.apple.android.music/files");
+    initPresentationInterface(&apInf, &dialogHandler, &credentialHandler);
+    setPresentationInterface(reqCtx, &apInf);
 
-    _ZNSt6__ndk110shared_ptrIN20androidstoreservices28AndroidPresentationInterfaceEE11make_sharedIJEEES3_DpOT_(
-        &apInf);
-
-    _ZN20androidstoreservices28AndroidPresentationInterface16setDialogHandlerEPFvlNSt6__ndk110shared_ptrIN17storeservicescore14ProtocolDialogEEENS2_INS_36AndroidProtocolDialogResponseHandlerEEEE(
-        apInf.obj, &dialogHandler);
-
-    _ZN20androidstoreservices28AndroidPresentationInterface21setCredentialsHandlerEPFvNSt6__ndk110shared_ptrIN17storeservicescore18CredentialsRequestEEENS2_INS_33AndroidCredentialsResponseHandlerEEEE(
-        apInf.obj, &credentialHandler);
-
-    _ZN17storeservicescore14RequestContext24setPresentationInterfaceERKNSt6__ndk110shared_ptrINS_21PresentationInterfaceEEE(
-        reqCtx.obj, &apInf);
-
-    return reqCtx;
+    return *reqCtx;
 }
 
 extern void *endLeaseCallback;
@@ -229,7 +180,7 @@ extern void *pbErrCallback;
 inline static uint8_t login(struct shared_ptr reqCtx) {
     fprintf(stderr, "[+] logging in...\n");
     struct shared_ptr flow;
-    _ZNSt6__ndk110shared_ptrIN17storeservicescore16AuthenticateFlowEE11make_sharedIJRNS0_INS1_14RequestContextEEEEEES3_DpOT_(
+    _ZNSt6__ndk110shared_ptrIN17storeservicescore16AuthenticateFlowEE11make_sharedIJRNS0_INS1_14RequestContextEEEEEES3_DpOT_ASM(
         &flow, &reqCtx);
     _ZN17storeservicescore16AuthenticateFlow3runEv(flow.obj);
     struct shared_ptr *resp =
@@ -294,10 +245,10 @@ inline static void *getKdContext(const char *const adam,
     union std_string serverUri = new_std_string(
         "https://play.itunes.apple.com/WebObjects/MZPlay.woa/music/fps");
     union std_string protocolType = new_std_string("simplified");
-    union std_string fpsCert = new_std_string(fairplayCert);
+    union std_string fpsCert = new_std_string(fairplay_cert);
 
     struct shared_ptr persistK = {.obj = NULL};
-    _ZN21SVFootHillSessionCtrl16getPersistentKeyERKNSt6__ndk112basic_stringIcNS0_11char_traitsIcEENS0_9allocatorIcEEEES8_S8_S8_S8_S8_S8_S8_(
+    _ZN21SVFootHillSessionCtrl16getPersistentKeyERKNSt6__ndk112basic_stringIcNS0_11char_traitsIcEENS0_9allocatorIcEEEES8_S8_S8_S8_S8_S8_S8_ASM(
         &persistK, FHinstance, &defaultId, &defaultId, &keyUri, &keyFormat,
         &keyFormatVer, &serverUri, &protocolType, &fpsCert);
 
@@ -305,7 +256,7 @@ inline static void *getKdContext(const char *const adam,
         return NULL;
 
     struct shared_ptr SVFootHillPContext;
-    _ZN21SVFootHillSessionCtrl14decryptContextERKNSt6__ndk112basic_stringIcNS0_11char_traitsIcEENS0_9allocatorIcEEEERKN11SVDecryptor15SVDecryptorTypeERKb(
+    _ZN21SVFootHillSessionCtrl14decryptContextERKNSt6__ndk112basic_stringIcNS0_11char_traitsIcEENS0_9allocatorIcEEEERKN11SVDecryptor15SVDecryptorTypeERKbASM(
         &SVFootHillPContext, FHinstance, persistK.obj);
 
     if (SVFootHillPContext.obj == NULL)
@@ -437,14 +388,14 @@ const char* get_m3u8_method_play(uint8_t leaseMgr[16], unsigned long adam) {
     struct std_vector HLSParam = new_std_vector(&HLS);
     static uint8_t z0 = 0;
     struct shared_ptr ptr_result;
-    _ZN22SVPlaybackLeaseManager12requestAssetERKmRKNSt6__ndk16vectorINS2_12basic_stringIcNS2_11char_traitsIcEENS2_9allocatorIcEEEENS7_IS9_EEEERKb(
+    _ZN22SVPlaybackLeaseManager12requestAssetERKmRKNSt6__ndk16vectorINS2_12basic_stringIcNS2_11char_traitsIcEENS2_9allocatorIcEEEENS7_IS9_EEEERKbASM(
         &ptr_result, leaseMgr, &adam, &HLSParam, &z0
     );
     if (_ZNK23SVPlaybackAssetResponse13hasValidAssetEv(ptr_result.obj)) {
         struct shared_ptr *playbackAsset = _ZNK23SVPlaybackAssetResponse13playbackAssetEv(ptr_result.obj);
         union std_string *m3u8 = malloc(24);
         void *playbackObj = playbackAsset->obj;
-        _ZNK17storeservicescore13PlaybackAsset9URLStringEv(m3u8, playbackObj);
+        _ZNK17storeservicescore13PlaybackAsset9URLStringEvASM(m3u8, playbackObj);
         const char *m3u8_str = std_string_data(m3u8);
         return m3u8_str;
     } else {
@@ -544,7 +495,7 @@ int main(int argc, char *argv[]) {
     _ZN22SVPlaybackLeaseManager25refreshLeaseAutomaticallyERKb(leaseMgr,
                                                                &autom);
     _ZN22SVPlaybackLeaseManager12requestLeaseERKb(leaseMgr, &autom);
-    FHinstance = _ZN21SVFootHillSessionCtrl8instanceEv();
+    FHinstance = getFootHillInstance();
 
     if (args_info.m3u8_port_given) {
         pthread_t m3u8_thread;
