@@ -34,7 +34,6 @@ jobs:
         cd build
         cmake ..
         make
-        aarch64-linux-gnu-gcc -o wrapper wrapper.c
 
     - name: Set outputs
       id: vars
