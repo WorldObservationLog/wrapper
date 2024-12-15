@@ -58,4 +58,4 @@ jobs:
         body: ${{ github.event.head_commit.message }}
         prerelease: true
         name: Wrapper.arm64.${{ steps.vars.outputs.sha_short }}
-        tag_name: arm64
+        tag_name: Wrapper.arm64.${{ steps.vars.outputs.sha_short }}
