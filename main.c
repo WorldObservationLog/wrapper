@@ -10,6 +10,7 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 
 #include "import.h"
 #include "cmdline.h"
@@ -21,6 +22,11 @@ static struct shared_ptr apInf;
 static uint8_t leaseMgr[16];
 struct gengetopt_args_info args_info;
 char *amUsername, *amPassword;
+
+int file_exists(char *filename) {
+  struct stat buffer;   
+  return (stat (filename, &buffer) == 0);
+}
 
 static void dialogHandler(long j, struct shared_ptr *protoDialogPtr,
                           struct shared_ptr *respHandler) {
@@ -79,8 +85,32 @@ static void credentialHandler(struct shared_ptr *credReqHandler,
     int passLen = strlen(amPassword);
 
     if (need2FA) {
-        printf("2FA code: ");
-        scanf("%6s", amPassword + passLen);
+        if (args_info.code_from_file_flag) {
+            fprintf(stderr, "[!] Enter your 2FA code into rootfs/data/code.txt\n");
+            fprintf(stderr, "[!] Example command: echo -n 114514 > rootfs/data/2fa.txt\n");
+            fprintf(stderr, "[!] Waiting for input...\n");
+            int count = 0;
+            while (1)
+            {
+                if (count >= 20) {
+                    fprintf(stderr, "[!] Failed to get 2FA Code in 60s. Exiting...\n");
+                    exit(0);
+                }
+                if (file_exists("/data/2fa.txt")) {
+                    FILE *fp = fopen("/data/2fa.txt", "r");
+                    fscanf(fp, "%6s", amPassword + passLen);
+                    remove("/data/2fa.txt");
+                    fprintf(stderr, "[!] Code file detected! Logging in...\n");
+                    break;
+                } else {
+                    sleep(3);
+                    count++;
+                }
+            }
+        } else {
+            printf("2FA code: ");
+            scanf("%6s", amPassword + passLen);
+        }
     }
 
     uint8_t *const ptr = malloc(80);

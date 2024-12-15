@@ -51,9 +51,11 @@ struct gengetopt_args_info
   char * proxy_arg;	/**< @brief  (default='').  */
   char * proxy_orig;	/**< @brief  original value given at command line.  */
   const char *proxy_help; /**< @brief  help description.  */
-  char * login_arg;	/**< @brief .  */
-  char * login_orig;	/**< @brief  original value given at command line.  */
-  const char *login_help; /**< @brief  help description.  */
+  char * login_arg;	/**< @brief username:password.  */
+  char * login_orig;	/**< @brief username:password original value given at command line.  */
+  const char *login_help; /**< @brief username:password help description.  */
+  int code_from_file_flag;	/**< @brief  (default=off).  */
+  const char *code_from_file_help; /**< @brief  help description.  */
   
   unsigned int help_given ;	/**< @brief Whether help was given.  */
   unsigned int version_given ;	/**< @brief Whether version was given.  */
@@ -62,6 +64,7 @@ struct gengetopt_args_info
   unsigned int m3u8_port_given ;	/**< @brief Whether m3u8-port was given.  */
   unsigned int proxy_given ;	/**< @brief Whether proxy was given.  */
   unsigned int login_given ;	/**< @brief Whether login was given.  */
+  unsigned int code_from_file_given ;	/**< @brief Whether code-from-file was given.  */
 
 } ;
 
