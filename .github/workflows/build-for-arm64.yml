@@ -50,7 +50,7 @@ jobs:
           Dockerfile
   
     - name: Create Release Zip File
-      run: zip -r Wrapper.arm64.${{ steps.vars.outputs.sha_short }}.zip rootfs/ wrapper
+      run: zip -r Wrapper.arm64.${{ steps.vars.outputs.sha_short }}.zip rootfs/ wrapper Dockerfile
       
     - name: Create Release
       uses: softprops/action-gh-release@v2
