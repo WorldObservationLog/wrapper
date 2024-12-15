@@ -42,8 +42,20 @@ jobs:
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
-        name: Wrapper.x86_64.${{ steps.vars.outputs.sha_short }}
+        name: Wrapper.arm64.${{ steps.vars.outputs.sha_short }}
         include-hidden-files: true
         path: |
           rootfs
           wrapper
+  
+    - name: Create Release Zip File
+      run: zip -r Wrapper.arm64.${{ steps.vars.outputs.sha_short }}.zip rootfs/ wrapper
+      
+    - name: Create Release
+      uses: softprops/action-gh-release@v2
+      with:
+        files: Wrapper.arm64.${{ steps.vars.outputs.sha_short }}.zip
+        body: ${{ github.event.head_commit.message }}
+        prerelease: true
+        name: Wrapper.arm64.${{ steps.vars.outputs.sha_short }}
+        tag_name: arm64
