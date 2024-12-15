@@ -9,7 +9,7 @@ Get the pre-built version from this project's Actions.
 Or you can refer to the Actions configuration file for compilation.
 
 # Docker
-Available on x86_64 and arm64. Need to download prebuilt version from releases or actions.
+Available for x86_64 and arm64. Need to download prebuilt version from releases or actions.
 
 Build image: `docker build --tag wrapper .`
 
