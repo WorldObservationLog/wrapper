@@ -47,6 +47,7 @@ jobs:
         path: |
           rootfs
           wrapper
+          Dockerfile
   
     - name: Create Release Zip File
       run: zip -r Wrapper.arm64.${{ steps.vars.outputs.sha_short }}.zip rootfs/ wrapper
