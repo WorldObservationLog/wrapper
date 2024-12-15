@@ -13,8 +13,8 @@ set(CMAKE_C_COMPILER "${TOOLCHAIN}/bin/aarch64-linux-android22-clang")
 set(CMAKE_CXX_COMPILER "${TOOLCHAIN}/bin/aarch64-linux-android22-clang++")
 set(C_COMPILER "${TOOLCHAIN}/bin/clang")
 
-set(CMAKE_C_FLAGS "-Wall -Werror -O3")
-set(CMAKE_CXX_FLAGS "-Wall -Werror -O3")
+set(CMAKE_C_FLAGS "-g -Wall -Werror")
+set(CMAKE_CXX_FLAGS "-g -Wall -Werror")
 
 set(CMDLINE_SOURCE cmdline.c)
 set(HANDLE_SOURCE main.cpp)
