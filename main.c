@@ -610,7 +610,6 @@ int main(int argc, char *argv[]) {
     pthread_t m3u8_thread;
     pthread_create(&m3u8_thread, NULL, &new_socket_m3u8, NULL);
     pthread_detach(m3u8_thread);
-    new_socket_m3u8(NULL);
-    
+
     return new_socket();
 }
