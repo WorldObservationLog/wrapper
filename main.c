@@ -493,10 +493,15 @@ const char* get_m3u8_method_play(uint8_t leaseMgr[16], unsigned long adam) {
             free(m3u8);
             return NULL;
         }
-
+        
         const char *m3u8_str = std_string_data(m3u8);
-        free(m3u8);
-        return m3u8_str;
+        if (m3u8_str) {
+            char *result = strdup(m3u8_str);  // Make a copy
+            free(m3u8);
+            return result;
+        } else {
+            return NULL;
+        }
     } else {
         return NULL;
     }
@@ -524,8 +529,14 @@ void handle_m3u8(const int connfd) {
             writefull(connfd, "\n", sizeof("\n"));
         } else {
             fprintf(stderr, "[.] m3u8 adamId: %ld, url: %s\n", adamID, m3u8);
-            strcat((char *)m3u8, "\n");
-            writefull(connfd, (void *)m3u8, strlen(m3u8));
+            char *with_newline = malloc(strlen(m3u8) + 2);
+            if (with_newline) {
+                strcpy(with_newline, m3u8);
+                strcat(with_newline, "\n");
+                writefull(connfd, with_newline, strlen(with_newline));
+                free(with_newline);
+            }
+            free((void *)m3u8);
         }
     }
 }
@@ -596,12 +607,10 @@ int main(int argc, char *argv[]) {
     _ZN22SVPlaybackLeaseManager12requestLeaseERKb(leaseMgr, &autom);
     FHinstance = _ZN21SVFootHillSessionCtrl8instanceEv();
 
-    if (args_info.m3u8_port_given) {
-        pthread_t m3u8_thread;
-        pthread_create(&m3u8_thread, NULL, &new_socket_m3u8, NULL);
-        pthread_detach(m3u8_thread);
-    } else {
-        fprintf(stderr, "[!] The feature of getting m3u8 is defaultly disabled because it's unstable now. To enable it, please manually specify m3u8-port param.\n");
-    }
+    pthread_t m3u8_thread;
+    pthread_create(&m3u8_thread, NULL, &new_socket_m3u8, NULL);
+    pthread_detach(m3u8_thread);
+    new_socket_m3u8(NULL);
+    
     return new_socket();
 }
