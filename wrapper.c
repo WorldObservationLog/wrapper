@@ -41,6 +41,13 @@ int main(int argc, char *argv[], char *envp[]) {
         return 1;
     }
 
+    if (child_proc > 0) {
+        close(STDOUT_FILENO);
+        waitpid(child_proc, NULL, 0);
+        return 0;
+    }
+
+    // Child process logic
     mkdir("/data/data/com.apple.android.music/files", 0777);
     mkdir("/data/data/com.apple.android.music/files/mpl_db", 0777);
     execve("/system/bin/main", argv, envp);
