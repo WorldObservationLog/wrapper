@@ -54,8 +54,8 @@ jobs:
       with:
         files: Wrapper.x86_64.${{ steps.vars.outputs.sha_short }}.zip
         body: ${{ github.event.head_commit.message }}
-        prerelease: true
         name: Wrapper.x86_64.${{ steps.vars.outputs.sha_short }}
         tag_name: Wrapper.x86_64.${{ steps.vars.outputs.sha_short }}
+        make_latest: true
         
 
