@@ -8,8 +8,12 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <string.h>
+
+#include "cmdline.h"
 
 pid_t child_proc = -1;
+struct gengetopt_args_info args_info;
 
 static void intHan(int signum) {
     if (child_proc != -1) {
@@ -18,6 +22,7 @@ static void intHan(int signum) {
 }
 
 int main(int argc, char *argv[], char *envp[]) {
+    cmdline_parser(argc, argv, &args_info);
     if (signal(SIGINT, intHan) == SIG_ERR) {
         perror("signal");
         return 1;
@@ -48,8 +53,8 @@ int main(int argc, char *argv[], char *envp[]) {
     }
 
     // Child process logic
-    mkdir("/data/data/com.apple.android.music/files", 0777);
-    mkdir("/data/data/com.apple.android.music/files/mpl_db", 0777);
+    mkdir(args_info.base_dir_arg, 0777);
+    mkdir(strcat(args_info.base_dir_arg, "/mpl_db"), 0777);
     execve("/system/bin/main", argv, envp);
     perror("execve");
     return 1;

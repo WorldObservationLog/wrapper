@@ -42,6 +42,7 @@ const char *gengetopt_args_info_help[] = {
   "  -P, --proxy=STRING        (default=`')",
   "  -L, --login=STRING      username:password",
   "  -F, --code-from-file      (default=off)",
+  "  -B, --base-dir=STRING   \n                            (default=`/data/data/com.apple.android.music/files')",
     0
 };
 
@@ -75,6 +76,7 @@ void clear_given (struct gengetopt_args_info *args_info)
   args_info->proxy_given = 0 ;
   args_info->login_given = 0 ;
   args_info->code_from_file_given = 0 ;
+  args_info->base_dir_given = 0 ;
 }
 
 static
@@ -92,6 +94,8 @@ void clear_args (struct gengetopt_args_info *args_info)
   args_info->login_arg = NULL;
   args_info->login_orig = NULL;
   args_info->code_from_file_flag = 0;
+  args_info->base_dir_arg = gengetopt_strdup ("/data/data/com.apple.android.music/files");
+  args_info->base_dir_orig = NULL;
   
 }
 
@@ -108,6 +112,7 @@ void init_args_info(struct gengetopt_args_info *args_info)
   args_info->proxy_help = gengetopt_args_info_help[5] ;
   args_info->login_help = gengetopt_args_info_help[6] ;
   args_info->code_from_file_help = gengetopt_args_info_help[7] ;
+  args_info->base_dir_help = gengetopt_args_info_help[8] ;
   
 }
 
@@ -205,6 +210,8 @@ cmdline_parser_release (struct gengetopt_args_info *args_info)
   free_string_field (&(args_info->proxy_orig));
   free_string_field (&(args_info->login_arg));
   free_string_field (&(args_info->login_orig));
+  free_string_field (&(args_info->base_dir_arg));
+  free_string_field (&(args_info->base_dir_orig));
   
   
 
@@ -251,6 +258,8 @@ cmdline_parser_dump(FILE *outfile, struct gengetopt_args_info *args_info)
     write_into_file(outfile, "login", args_info->login_orig, 0);
   if (args_info->code_from_file_given)
     write_into_file(outfile, "code-from-file", 0, 0 );
+  if (args_info->base_dir_given)
+    write_into_file(outfile, "base-dir", args_info->base_dir_orig, 0);
   
 
   i = EXIT_SUCCESS;
@@ -519,10 +528,11 @@ cmdline_parser_internal (
         { "proxy",	1, NULL, 'P' },
         { "login",	1, NULL, 'L' },
         { "code-from-file",	0, NULL, 'F' },
+        { "base-dir",	1, NULL, 'B' },
         { 0,  0, 0, 0 }
       };
 
-      c = getopt_long (argc, argv, "hVH:D:M:P:L:F", long_options, &option_index);
+      c = getopt_long (argc, argv, "hVH:D:M:P:L:FB:", long_options, &option_index);
 
       if (c == -1) break;	/* Exit from `while (1)' loop.  */
 
@@ -604,6 +614,18 @@ cmdline_parser_internal (
           if (update_arg((void *)&(args_info->code_from_file_flag), 0, &(args_info->code_from_file_given),
               &(local_args_info.code_from_file_given), optarg, 0, 0, ARG_FLAG,
               check_ambiguity, override, 1, 0, "code-from-file", 'F',
+              additional_error))
+            goto failure;
+        
+          break;
+        case 'B':	/* .  */
+        
+        
+          if (update_arg( (void *)&(args_info->base_dir_arg), 
+               &(args_info->base_dir_orig), &(args_info->base_dir_given),
+              &(local_args_info.base_dir_given), optarg, 0, "/data/data/com.apple.android.music/files", ARG_STRING,
+              check_ambiguity, override, 0, 0,
+              "base-dir", 'B',
               additional_error))
             goto failure;
         

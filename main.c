@@ -28,6 +28,19 @@ int file_exists(char *filename) {
   return (stat (filename, &buffer) == 0);
 }
 
+char *strcat_b(char *dest, char* src) {
+    size_t len1 = strlen(dest);
+    size_t len2 = strlen(src);
+
+    char *result = malloc(len1 + len2 + 1);
+    if (!result) return NULL; 
+
+    strcpy(result, dest);
+    strcat(result, src);
+
+    return result;
+}
+
 static void dialogHandler(long j, struct shared_ptr *protoDialogPtr,
                           struct shared_ptr *respHandler) {
     const char *const title = std_string_data(
@@ -86,8 +99,8 @@ static void credentialHandler(struct shared_ptr *credReqHandler,
 
     if (need2FA) {
         if (args_info.code_from_file_flag) {
-            fprintf(stderr, "[!] Enter your 2FA code into rootfs/data/code.txt\n");
-            fprintf(stderr, "[!] Example command: echo -n 114514 > rootfs/data/2fa.txt\n");
+            fprintf(stderr, "[!] Enter your 2FA code into rootfs/%s/2fa.txt\n", args_info.base_dir_arg);
+            fprintf(stderr, "[!] Example command: echo -n 114514 > rootfs/%s/2fa.txt\n", args_info.base_dir_arg);
             fprintf(stderr, "[!] Waiting for input...\n");
             int count = 0;
             while (1)
@@ -96,10 +109,11 @@ static void credentialHandler(struct shared_ptr *credReqHandler,
                     fprintf(stderr, "[!] Failed to get 2FA Code in 60s. Exiting...\n");
                     exit(0);
                 }
-                if (file_exists("/data/2fa.txt")) {
-                    FILE *fp = fopen("/data/2fa.txt", "r");
+                char *path = strcat_b(args_info.base_dir_arg, "/2fa.txt");
+                if (file_exists(path)) {
+                    FILE *fp = fopen(path, "r");
                     fscanf(fp, "%6s", amPassword + passLen);
-                    remove("/data/2fa.txt");
+                    remove(path);
                     fprintf(stderr, "[!] Code file detected! Logging in...\n");
                     break;
                 } else {
@@ -189,7 +203,7 @@ static inline void init() {
 static inline struct shared_ptr init_ctx() {
     fprintf(stderr, "[+] initializing ctx...\n");
     union std_string strBuf =
-        new_std_string("/data/data/com.apple.android.music/files/mpl_db");
+        new_std_string(strcat_b(args_info.base_dir_arg, "/mpl_db"));
 
     struct shared_ptr reqCtx;
     _ZNSt6__ndk110shared_ptrIN17storeservicescore14RequestContextEE11make_sharedIJRNS_12basic_stringIcNS_11char_traitsIcEENS_9allocatorIcEEEEEEES3_DpOT_(
@@ -234,7 +248,7 @@ static inline struct shared_ptr init_ctx() {
     static uint8_t buf[88];
     _ZN17storeservicescore14RequestContext4initERKNSt6__ndk110shared_ptrINS_20RequestContextConfigEEE(
         &buf, reqCtx.obj, &reqCtxCfg);
-    strBuf = new_std_string("/data/data/com.apple.android.music/files");
+    strBuf = new_std_string(args_info.base_dir_arg);
     _ZN17storeservicescore14RequestContext24setFairPlayDirectoryPathERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(
         reqCtx.obj, &strBuf);
 
@@ -599,6 +613,14 @@ char* get_account_storefront_id(struct shared_ptr reqCtx) {
     return NULL;
 }
 
+void write_storefront_id(struct shared_ptr reqCtx) {
+    FILE *fp = fopen(strcat_b(args_info.base_dir_arg, "/STOREFRONT_ID"), "w");
+    char *storefront_id = get_account_storefront_id(reqCtx);
+    printf("[+] StoreFront ID: %s\n", storefront_id);
+    fprintf(fp, "%s", get_account_storefront_id(reqCtx));
+    fclose(fp);
+}
+
 int main(int argc, char *argv[]) {
     cmdline_parser(argc, argv, &args_info);
 
@@ -620,9 +642,11 @@ int main(int argc, char *argv[]) {
     _ZN22SVPlaybackLeaseManager12requestLeaseERKb(leaseMgr, &autom);
     FHinstance = _ZN21SVFootHillSessionCtrl8instanceEv();
 
+    write_storefront_id(ctx);
+
     pthread_t m3u8_thread;
     pthread_create(&m3u8_thread, NULL, &new_socket_m3u8, NULL);
     pthread_detach(m3u8_thread);
-    
+
     return new_socket();
 }
