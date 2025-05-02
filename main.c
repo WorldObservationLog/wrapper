@@ -586,6 +586,19 @@ static inline void *new_socket_m3u8(void *args) {
     }
 }
 
+char* get_account_storefront_id(struct shared_ptr reqCtx) {
+    union std_string *region = malloc(sizeof(union std_string));
+    struct shared_ptr urlbag = {.obj = 0x0, .ctrl_blk = 0x0};
+    _ZNK17storeservicescore14RequestContext20storeFrontIdentifierERKNSt6__ndk110shared_ptrINS_6URLBagEEE(region, reqCtx.obj, &urlbag);
+    const char *region_str = std_string_data(region);
+    if (region_str) {
+        char *result = strdup(region_str); 
+        free(region);
+        return result;
+    } 
+    return NULL;
+}
+
 int main(int argc, char *argv[]) {
     cmdline_parser(argc, argv, &args_info);
 

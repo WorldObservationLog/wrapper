@@ -240,6 +240,8 @@ extern int _ZNK23SVPlaybackAssetResponse13hasValidAssetEv(void *);
 extern struct shared_ptr *_ZNK23SVPlaybackAssetResponse13playbackAssetEv(void *);
 extern union std_string *_ZNK17storeservicescore13PlaybackAsset9URLStringEv(void *, uint8_t *);
 
+extern union std_string *_ZNK17storeservicescore14RequestContext20storeFrontIdentifierERKNSt6__ndk110shared_ptrINS_6URLBagEEE(void *, void *, struct shared_ptr *);
+
 const char *const android_id = "dc28071e981c439e";
 const char *const fairplayCert = "MIIEzjCCA7agAwIBAgIIAXAVjHFZDjgwDQYJKoZIhvcNAQEFBQAwfzELMAkGA1UEBhMCVVMxEz"
 								 "ARBgNVBAoMCkFwcGxlIEluYy4xJjAkBgNVBAsMHUFwcGxlIENlcnRpZmljYXRpb24gQXV0aG9y"
