@@ -161,12 +161,11 @@ static inline void init() {
     fprintf(stderr, "[+] starting...\n");
     setenv("ANDROID_DNS_MODE", "local", 1);
     if (args_info.proxy_given) {
-        fprintf(stderr, "[+] Using proxy %s", args_info.proxy_arg);
-        setenv("http_proxy", args_info.proxy_arg, 1);
-        setenv("https_proxy", args_info.proxy_arg, 1);
+        fprintf(stderr, "[+] Using proxy %s\n", args_info.proxy_arg);
+        setenv("all_proxy", args_info.proxy_arg, 1);
     }
 
-    static const char *resolvers[2] = {"1.1.1.1", "1.0.0.1"};
+    static const char *resolvers[2] = {"223.5.5.5", "223.6.6.6"};
     _resolv_set_nameservers_for_net(0, resolvers, 2, ".");
 #ifndef MyRelease
     subhook_install(subhook_new(
