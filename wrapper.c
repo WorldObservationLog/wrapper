@@ -47,8 +47,7 @@ int main(int argc, char *argv[], char *envp[]) {
     }
 
     if (child_proc > 0) {
-        close(STDOUT_FILENO);
-        wait(NULL);  // Parent waits for the child process to terminate
+        wait(NULL);
         return 0;
     }
 
