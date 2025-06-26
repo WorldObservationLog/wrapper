@@ -57,6 +57,8 @@ static inline const char *std_string_data(union std_string *str) {
 	return str->data;
 }
 
+extern void curl_easy_setopt(void *, int32_t, long);
+
 extern void _ZN20androidstoreservices30SVSubscriptionStatusMgrFactory6createEv(struct shared_ptr *);
 extern void
 _ZN20androidstoreservices27SVSubscriptionStatusMgrImpl33checkSubscriptionStatusFromSourceERKNSt6__ndk110shared_ptrIN17storeservicescore14RequestContextEEERKNS_23SVSubscriptionStatusMgr26SVSubscriptionStatusSourceE(

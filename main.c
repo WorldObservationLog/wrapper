@@ -16,12 +16,37 @@
 #include "cmdline.h"
 #ifndef MyRelease
 #include "subhook/subhook.c"
+#include "subhook/subhook.h"
 #endif
 
 static struct shared_ptr apInf;
 static uint8_t leaseMgr[16];
 struct gengetopt_args_info args_info;
 char *amUsername, *amPassword;
+
+#ifndef MyRelease
+int32_t CURLOPT_SSL_VERIFYPEER = 64;
+int32_t CURLOPT_SSL_VERIFYHOST = 81;
+int32_t CURLOPT_PINNEDPUBLICKEY = 10230;
+
+int32_t CURLOPT_CUSTOMREQUEST = 10036;
+int32_t CURLOPT_URL = 10002;
+int32_t CURLOPT_POSTFIELDS = 10015;
+
+subhook_t curl_hook;
+
+void curl_easy_setopt_hook(void *curl, int32_t option, long param) {
+    subhook_remove(curl_hook);
+
+    if (option == CURLOPT_SSL_VERIFYPEER || option == CURLOPT_SSL_VERIFYHOST || option == CURLOPT_PINNEDPUBLICKEY) {
+        curl_easy_setopt(curl, option, 0);
+        printf("[+] hooked curl_easy_setopt %d\n", option);
+    } else {
+        curl_easy_setopt(curl, option, param);
+    }
+    subhook_install(curl_hook);
+}
+#endif
 
 int file_exists(char *filename) {
   struct stat buffer;   
@@ -622,6 +647,11 @@ void write_storefront_id(struct shared_ptr reqCtx) {
 
 int main(int argc, char *argv[]) {
     cmdline_parser(argc, argv, &args_info);
+
+    #ifndef MyRelease
+    curl_hook = subhook_new(curl_easy_setopt, curl_easy_setopt_hook, SUBHOOK_64BIT_OFFSET);
+    subhook_install(curl_hook);
+    #endif
 
     init();
     const struct shared_ptr ctx = init_ctx();
