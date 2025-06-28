@@ -6,6 +6,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <stdarg.h>
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -34,6 +35,7 @@ int32_t CURLOPT_URL = 10002;
 int32_t CURLOPT_POSTFIELDS = 10015;
 
 subhook_t curl_hook;
+subhook_t log_hook;
 
 void curl_easy_setopt_hook(void *curl, int32_t option, long param) {
     subhook_remove(curl_hook);
@@ -45,6 +47,15 @@ void curl_easy_setopt_hook(void *curl, int32_t option, long param) {
         curl_easy_setopt(curl, option, param);
     }
     subhook_install(curl_hook);
+}
+
+void android_log_hook(int prio, const char *tag, const char *fmt, ...) {
+    char log_buffer[1024];
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(log_buffer, sizeof(log_buffer), fmt, args);
+    va_end(args);
+    printf("[%s] %s\n", tag, log_buffer);
 }
 #endif
 
@@ -651,6 +662,8 @@ int main(int argc, char *argv[]) {
     #ifndef MyRelease
     curl_hook = subhook_new(curl_easy_setopt, curl_easy_setopt_hook, SUBHOOK_64BIT_OFFSET);
     subhook_install(curl_hook);
+    log_hook = subhook_new(__android_log_print, android_log_hook, SUBHOOK_64BIT_OFFSET);
+    subhook_install(log_hook);
     #endif
 
     init();

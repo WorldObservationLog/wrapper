@@ -244,6 +244,9 @@ extern union std_string *_ZNK17storeservicescore13PlaybackAsset9URLStringEv(void
 
 extern union std_string *_ZNK17storeservicescore14RequestContext20storeFrontIdentifierERKNSt6__ndk110shared_ptrINS_6URLBagEEE(void *, void *, struct shared_ptr *);
 
+extern void _ZN21SVFootHillSessionCtrl16resetAllContextsEv(void *);
+extern int __android_log_print(int prio, const char *tag, const char *fmt, ...);
+
 const char *const android_id = "dc28071e981c439e";
 const char *const fairplayCert = "MIIEzjCCA7agAwIBAgIIAXAVjHFZDjgwDQYJKoZIhvcNAQEFBQAwfzELMAkGA1UEBhMCVVMxEz"
 								 "ARBgNVBAoMCkFwcGxlIEluYy4xJjAkBgNVBAsMHUFwcGxlIENlcnRpZmljYXRpb24gQXV0aG9y"
