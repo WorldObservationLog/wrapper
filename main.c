@@ -24,6 +24,7 @@ static struct shared_ptr apInf;
 static uint8_t leaseMgr[16];
 struct gengetopt_args_info args_info;
 char *amUsername, *amPassword;
+int decryptCount = 1000;
 
 #ifndef MyRelease
 int32_t CURLOPT_SSL_VERIFYPEER = 64;
@@ -397,8 +398,21 @@ inline static void *getKdContext(const char *const adam,
     return kdContext;
 }
 
+void refresh_decrypt_ctx() {
+    uint8_t autom = 1;
+    _ZN22SVPlaybackLeaseManager12requestLeaseERKb(leaseMgr, &autom);
+    _ZN21SVFootHillSessionCtrl16resetAllContextsEv(FHinstance);
+    preshareCtx = NULL;
+    preshareCtx = getKdContext("0", "skd://itunes.apple.com/P000000000/s1/e1");
+    printf("[!] refreshed context\n");
+}
+
 void handle(const int connfd) {
     while (1) {
+        if (decryptCount == 0) {
+            refresh_decrypt_ctx();
+            decryptCount = 1000;
+        }
         uint8_t adamSize;
         if (!readfull(connfd, &adamSize, sizeof(uint8_t)))
             return;
@@ -447,6 +461,7 @@ void handle(const int connfd) {
             NfcRKVnxuKZy04KWbdFu71Ou(*kdContext, 5, sample, sample, size);
             writefull(connfd, sample, size);
             free(sample);
+            decryptCount -= 1;
         }
     }
 }
