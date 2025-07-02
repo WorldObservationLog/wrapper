@@ -37,27 +37,69 @@ int32_t CURLOPT_URL = 10002;
 int32_t CURLOPT_POSTFIELDS = 10015;
 
 subhook_t curl_hook;
-subhook_t log_hook;
 
-void curl_easy_setopt_hook(void *curl, int32_t option, long param) {
+void curl_easy_setopt_hook(void *curl, int32_t option, ...) {
+    va_list args;
+    va_start(args, option);
+    void* param = va_arg(args, void*);
+    
     subhook_remove(curl_hook);
-
-    if (option == CURLOPT_SSL_VERIFYPEER || option == CURLOPT_SSL_VERIFYHOST || option == CURLOPT_PINNEDPUBLICKEY) {
-        curl_easy_setopt(curl, option, 0);
+ 
+    if (option == CURLOPT_SSL_VERIFYPEER || 
+        option == CURLOPT_SSL_VERIFYHOST || 
+        option == CURLOPT_PINNEDPUBLICKEY) {
+        curl_easy_setopt(curl, option, 0L);
         printf("[+] hooked curl_easy_setopt %d\n", option);
     } else {
         curl_easy_setopt(curl, option, param);
     }
+ 
+    va_end(args);
     subhook_install(curl_hook);
 }
 
-void android_log_hook(int prio, const char *tag, const char *fmt, ...) {
+int android_log_print_hook(int prio, const char *tag, const char *fmt, ...) {
     char log_buffer[1024];
     va_list args;
     va_start(args, fmt);
     vsnprintf(log_buffer, sizeof(log_buffer), fmt, args);
     va_end(args);
     printf("[%s] %s\n", tag, log_buffer);
+    return 0;
+}
+
+int android_log_write_hook(int prio, const char *tag, const char *text) {
+    printf("[%s] %s\n", tag, text);
+    return 0;
+}
+
+void DumpHex(const void* data, size_t size) {
+	char ascii[17];
+	size_t i, j;
+	ascii[16] = '\0';
+	for (i = 0; i < size; ++i) {
+		printf("%02X ", ((unsigned char*)data)[i]);
+		if (((unsigned char*)data)[i] >= ' ' && ((unsigned char*)data)[i] <= '~') {
+			ascii[i % 16] = ((unsigned char*)data)[i];
+		} else {
+			ascii[i % 16] = '.';
+		}
+		if ((i+1) % 8 == 0 || i+1 == size) {
+			printf(" ");
+			if ((i+1) % 16 == 0) {
+				printf("|  %s \n", ascii);
+			} else if (i+1 == size) {
+				ascii[(i+1) % 16] = '\0';
+				if ((i+1) % 16 <= 8) {
+					printf(" ");
+				}
+				for (j = (i+1) % 16; j < 16; ++j) {
+					printf("   ");
+				}
+				printf("|  %s \n", ascii);
+			}
+		}
+	}
 }
 #endif
 
@@ -205,11 +247,6 @@ static inline void init() {
 
     static const char *resolvers[2] = {"223.5.5.5", "223.6.6.6"};
     _resolv_set_nameservers_for_net(0, resolvers, 2, ".");
-#ifndef MyRelease
-    subhook_install(subhook_new(
-        _ZN13mediaplatform26DebugLogEnabledForPriorityENS_11LogPriorityE,
-        allDebug, SUBHOOK_64BIT_OFFSET));
-#endif
 
     // static char android_id[16];
     // for (int i = 0; i < 16; ++i) {
@@ -227,7 +264,6 @@ static inline void init() {
     //     foothill, &root, &natLib);
     // _ZN8FootHill24defaultContextIdentifierEv(foothill);
 
-    struct shared_ptr GUID;
     _ZN17storeservicescore10DeviceGUID8instanceEv(&GUID);
 
     static uint8_t ret[88];
@@ -841,10 +877,11 @@ int main(int argc, char *argv[]) {
     cmdline_parser(argc, argv, &args_info);
 
     #ifndef MyRelease
+    subhook_install(subhook_new(_ZN13mediaplatform26DebugLogEnabledForPriorityENS_11LogPriorityE, allDebug, SUBHOOK_64BIT_OFFSET));
     curl_hook = subhook_new(curl_easy_setopt, curl_easy_setopt_hook, SUBHOOK_64BIT_OFFSET);
     subhook_install(curl_hook);
-    log_hook = subhook_new(__android_log_print, android_log_hook, SUBHOOK_64BIT_OFFSET);
-    subhook_install(log_hook);
+    subhook_install(subhook_new(__android_log_print, android_log_print_hook, SUBHOOK_64BIT_OFFSET));
+    subhook_install(subhook_new(__android_log_write, android_log_write_hook, SUBHOOK_64BIT_OFFSET));
     #endif
 
     init();

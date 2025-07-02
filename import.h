@@ -249,6 +249,7 @@ extern union std_string *_ZNK17storeservicescore14RequestContext20storeFrontIden
 
 extern void _ZN21SVFootHillSessionCtrl16resetAllContextsEv(void *);
 extern int __android_log_print(int prio, const char *tag, const char *fmt, ...);
+extern int __android_log_write(int prio, const char *tag, const char *text);
 
 extern void *_ZTVNSt6__ndk120__shared_ptr_emplaceIN13mediaplatform11HTTPMessageENS_9allocatorIS2_EEEE;
 extern void *_ZN13mediaplatform11HTTPMessageC2ENSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEES7_(void *,  union std_string *, union std_string *);
