@@ -28,8 +28,6 @@ set_target_properties(main PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/rootfs/system/bin"
 )
 
-
-
 find_library(ANDROIDAPPMUSIC_LIB androidappmusic PATHS ${CMAKE_SOURCE_DIR}/rootfs/system/lib64)
 find_library(STORESERVICESCORE_LIB storeservicescore PATHS ${CMAKE_SOURCE_DIR}/rootfs/system/lib64)
 find_library(MEDIAPLATFORM_LIB mediaplatform PATHS ${CMAKE_SOURCE_DIR}/rootfs/system/lib64)
@@ -43,19 +41,19 @@ target_link_libraries(main
     ${ANDROIDAPPMUSIC_LIB}
     ${STORESERVICESCORE_LIB}
     ${MEDIAPLATFORM_LIB}
+    ${CURL_SHARED_LIB}
 )
 
 get_target_property(MAIN_COMPILE_DEFINITIONS main COMPILE_DEFINITIONS)
 if(NOT "MyRelease" IN_LIST MAIN_COMPILE_DEFINITIONS)
     target_link_libraries(main
-        ${CURL_SHARED_LIB}
         ${LOG_SHARED_LIB}
     )
-    set(CMAKE_C_FLAGS "-Wall -Werror -g")
-    set(CMAKE_CXX_FLAGS "-Wall -Werror -g")
+    set(CMAKE_C_FLAGS "-Werror -g")
+    set(CMAKE_CXX_FLAGS "-Werror -g")
 else()
-    set(CMAKE_C_FLAGS "-Wall -Werror -O3")
-    set(CMAKE_CXX_FLAGS "-Wall -Werror -O3")
+    set(CMAKE_C_FLAGS "-Wall -Werror")
+    set(CMAKE_CXX_FLAGS "-Wall -Werror")
 endif()
 
 link_directories(${CMAKE_SOURCE_DIR}/rootfs/system/lib64)

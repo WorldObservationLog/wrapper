@@ -24,6 +24,7 @@ static struct shared_ptr apInf;
 static uint8_t leaseMgr[16];
 struct gengetopt_args_info args_info;
 char *amUsername, *amPassword;
+struct shared_ptr GUID;
 int decryptCount = 1000;
 
 #ifndef MyRelease
@@ -671,6 +672,171 @@ void write_storefront_id(struct shared_ptr reqCtx) {
     fclose(fp);
 }
 
+char *get_guid() {
+    char *ret[2];
+    _ZN17storeservicescore10DeviceGUID4guidEv(ret, GUID.obj);
+    char *guid = _ZNK13mediaplatform4Data5bytesEv(ret[0]);
+    return guid;
+}
+
+long long getCurrentTimeMillis() {
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return tv.tv_sec * 1000LL + tv.tv_usec / 1000;
+}
+
+char* extract_music_token(const char* json_str) {
+    const char* start = strstr(json_str, "music_token") + 13;
+    while (*start == ' ' || *start == '"') start++;
+    const char* end = strchr(start, '"');
+    size_t len = end - start;
+    char* token = (char*)malloc(len + 1);
+    memcpy(token, start, len);
+    token[len] = '\0';
+    return token;
+}
+
+char *get_music_user_token(char *guid, char *authToken, struct shared_ptr reqCtx){
+    uint8_t ptr[480];
+    *(void **)(ptr) =
+        &_ZTVNSt6__ndk120__shared_ptr_emplaceIN13mediaplatform11HTTPMessageENS_9allocatorIS2_EEEE +
+        2;
+    struct shared_ptr httpMessage = {.obj = ptr + 32, .ctrl_blk = ptr};
+    union std_string url = new_std_string("https://play.itunes.apple.com/WebObjects/MZPlay.woa/wa/createMusicToken");
+    union std_string method = new_std_string("POST");
+    _ZN13mediaplatform11HTTPMessageC2ENSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEES7_(httpMessage.obj, &url, &method);
+    union std_string contentTypeHeader = new_std_string("Content-Type");
+    union std_string contentTypeValue = new_std_string("application/json; charset=UTF-8");
+    _ZN13mediaplatform11HTTPMessage9setHeaderERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEES9_(httpMessage.obj, &contentTypeHeader, &contentTypeValue);
+    union std_string expectHeader = new_std_string("Expect");
+    union std_string expectValue = new_std_string("");
+    _ZN13mediaplatform11HTTPMessage9setHeaderERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEES9_(httpMessage.obj, &expectHeader, &expectValue);
+    union std_string bundleIdHeader = new_std_string("X-Apple-Requesting-Bundle-Id");
+    union std_string bundleIdValue = new_std_string("com.apple.android.music");
+    _ZN13mediaplatform11HTTPMessage9setHeaderERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEES9_(httpMessage.obj, &bundleIdHeader, &bundleIdValue);
+    union std_string bundleVersionHeader = new_std_string("X-Apple-Requesting-Bundle-Version");
+    union std_string bundleVersionValue = new_std_string("Music/4.9 Android/10 model/Samsung S9 build/7663313 (dt:66)");
+    _ZN13mediaplatform11HTTPMessage9setHeaderERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEES9_(httpMessage.obj, &bundleVersionHeader, &bundleVersionValue);
+    size_t body_size = 512;
+    char *body = (char *)malloc(body_size);
+    if (body == NULL) {
+        return "";
+    }
+
+    snprintf(body, body_size, "{\"guid\":\"%s\",\"assertion\":\"%s\",\"tcc-acceptance-date\":\"%lld\"}", guid, authToken, getCurrentTimeMillis());
+
+    _ZN13mediaplatform11HTTPMessage11setBodyDataEPcm(httpMessage.obj, body, strlen(body));
+    free(body);
+    uint8_t urlRequest[512];
+    _ZN17storeservicescore10URLRequestC2ERKNSt6__ndk110shared_ptrIN13mediaplatform11HTTPMessageEEERKNS2_INS_14RequestContextEEE(urlRequest, &httpMessage, &reqCtx);
+    _ZN17storeservicescore10URLRequest3runEv(urlRequest);
+    struct shared_ptr *err = _ZNK17storeservicescore10URLRequest5errorEv(urlRequest);
+    if (err->obj != NULL) {
+        return "";
+    }
+    struct shared_ptr *urlResp = _ZNK17storeservicescore10URLRequest8responseEv(urlRequest);
+    struct shared_ptr *resp = _ZNK17storeservicescore11URLResponse18underlyingResponseEv(urlResp->obj);
+    void *http_message_obj = resp->obj;
+    void** data_ptr_location = (void**)((char*)http_message_obj + 48);
+    void* data_ptr = *data_ptr_location;
+    char *respBody = _ZNK13mediaplatform4Data5bytesEv(data_ptr);
+    char *token = extract_music_token(respBody);
+    char *result = strdup(token); 
+    return result;
+}
+
+struct MemoryStruct {
+    char* memory;
+    size_t size;
+    size_t capacity;
+};
+
+static size_t write_cb(void* data, size_t size, size_t nmemb, void* userp) {
+    size_t realsize = size * nmemb;
+    struct MemoryStruct* mem = (struct MemoryStruct*)userp;
+
+    if (mem->size + realsize + 1 > mem->capacity) {
+        size_t new_capacity = (mem->capacity == 0) ? 
+            (1024 * 1024) :  
+            (mem->capacity * 2);  
+        
+        while (new_capacity < mem->size + realsize + 1) {
+            new_capacity *= 2;
+        }
+
+        char* ptr = realloc(mem->memory, new_capacity);
+        if (!ptr) {
+            printf("Failed to allocate memory\n");
+            return 0;
+        }
+        mem->memory = ptr;
+        mem->capacity = new_capacity;
+    }
+
+    memcpy(&(mem->memory[mem->size]), data, realsize);
+    mem->size += realsize;
+    mem->memory[mem->size] = 0;
+    return realsize;
+}
+
+char* get_dev_token() {
+    void *curl = curl_easy_init();
+    struct MemoryStruct html = {NULL, 0, 0};
+    struct MemoryStruct js = {NULL, 0, 0};
+    char* token = NULL;
+    
+    curl_easy_setopt(curl, 10002L, "https://beta.music.apple.com");
+    curl_easy_setopt(curl, 20011L, write_cb);
+    curl_easy_setopt(curl, 10001L, &html);
+    curl_easy_setopt(curl, 64, 0L);
+    curl_easy_setopt(curl, 81, 0L);
+    curl_easy_perform(curl);
+
+    if (html.memory) {
+        char* js_uri = strstr(html.memory, "/assets/index-legacy-");
+        if (js_uri) {
+            char url[256] = "https://beta.music.apple.com";
+            strncat(url, js_uri, strchr(js_uri, (int)'.') + 3 - js_uri);
+            
+            curl_easy_setopt(curl, 10002L, url);
+            curl_easy_setopt(curl, 10001L, &js);
+            curl_easy_setopt(curl, 64, 0L);
+            curl_easy_setopt(curl, 81, 0L);
+            curl_easy_perform(curl);
+            
+            if (js.memory) {
+                char* token_start = strstr(js.memory, "eyJh");
+                if (token_start) {
+                    char* token_end = strchr(token_start, '"');
+                    if (token_end) {
+                        size_t token_len = token_end - token_start;
+                        token = malloc(token_len + 1);
+                        if (token) {
+                            memcpy(token, token_start, token_len);
+                            token[token_len] = 0;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    curl_easy_cleanup(curl);
+    free(html.memory);
+    free(js.memory);
+    return token;
+}
+
+void write_music_token(struct shared_ptr reqCtx) {
+    FILE *fp = fopen(strcat_b(args_info.base_dir_arg, "/MUSIC_TOKEN"), "w");
+    char *guid = get_guid();
+    char *dev_token = get_dev_token();
+    char *token = get_music_user_token(guid, dev_token, reqCtx);
+    printf("[+] Music-Token: %.14s...\n", token);
+    fprintf(fp, "%s", token);
+    fclose(fp);
+}
+
 int main(int argc, char *argv[]) {
     cmdline_parser(argc, argv, &args_info);
 
@@ -694,12 +860,12 @@ int main(int argc, char *argv[]) {
     _ZN22SVPlaybackLeaseManagerC2ERKNSt6__ndk18functionIFvRKiEEERKNS1_IFvRKNS0_10shared_ptrIN17storeservicescore19StoreErrorConditionEEEEEE(
         leaseMgr, &endLeaseCallback, &pbErrCallback);
     uint8_t autom = 1;
-    _ZN22SVPlaybackLeaseManager25refreshLeaseAutomaticallyERKb(leaseMgr,
-                                                               &autom);
+    _ZN22SVPlaybackLeaseManager25refreshLeaseAutomaticallyERKb(leaseMgr, &autom);
     _ZN22SVPlaybackLeaseManager12requestLeaseERKb(leaseMgr, &autom);
     FHinstance = _ZN21SVFootHillSessionCtrl8instanceEv();
 
     write_storefront_id(ctx);
+    write_music_token(ctx);
 
     pthread_t m3u8_thread;
     pthread_create(&m3u8_thread, NULL, &new_socket_m3u8, NULL);

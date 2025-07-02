@@ -57,7 +57,10 @@ static inline const char *std_string_data(union std_string *str) {
 	return str->data;
 }
 
-extern void curl_easy_setopt(void *, int32_t, long);
+extern void curl_easy_setopt(void *curl, int32_t option, ...);
+extern void *curl_easy_init();
+extern void *curl_easy_perform(void *);
+extern void curl_easy_cleanup(void *);
 
 extern void _ZN20androidstoreservices30SVSubscriptionStatusMgrFactory6createEv(struct shared_ptr *);
 extern void
@@ -246,6 +249,19 @@ extern union std_string *_ZNK17storeservicescore14RequestContext20storeFrontIden
 
 extern void _ZN21SVFootHillSessionCtrl16resetAllContextsEv(void *);
 extern int __android_log_print(int prio, const char *tag, const char *fmt, ...);
+
+extern void *_ZTVNSt6__ndk120__shared_ptr_emplaceIN13mediaplatform11HTTPMessageENS_9allocatorIS2_EEEE;
+extern void *_ZN13mediaplatform11HTTPMessageC2ENSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEES7_(void *,  union std_string *, union std_string *);
+extern void _ZN13mediaplatform11HTTPMessage9setHeaderERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEES9_(void *, union std_string *, union std_string *);
+extern void _ZN13mediaplatform11HTTPMessage11setBodyDataEPcm(void *,char *, u_long);
+extern void *_ZN17storeservicescore10DeviceGUID4guidEv(void *, void *);
+extern char *_ZNK13mediaplatform4Data5bytesEv(void *);
+extern void *_ZN17storeservicescore10URLRequestC2ERKNSt6__ndk110shared_ptrIN13mediaplatform11HTTPMessageEEERKNS2_INS_14RequestContextEEE(void *, struct shared_ptr *, struct shared_ptr *);
+extern void *_ZN17storeservicescore10URLRequest3runEv(void *);
+extern struct shared_ptr *_ZNK17storeservicescore10URLRequest5errorEv(void *);
+extern struct shared_ptr *_ZNK17storeservicescore10URLRequest8responseEv(void *);
+extern struct shared_ptr *_ZNK17storeservicescore11URLResponse18underlyingResponseEv(void *);
+
 
 const char *const android_id = "dc28071e981c439e";
 const char *const fairplayCert = "MIIEzjCCA7agAwIBAgIIAXAVjHFZDjgwDQYJKoZIhvcNAQEFBQAwfzELMAkGA1UEBhMCVVMxEz"
