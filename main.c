@@ -864,6 +864,13 @@ char* get_dev_token() {
 }
 
 void write_music_token(struct shared_ptr reqCtx) {
+    if (file_exists(strcat_b(args_info.base_dir_arg, "/MUSIC_TOKEN"))) {
+        char token[256];
+        FILE *fp = fopen(strcat_b(args_info.base_dir_arg, "/MUSIC_TOKEN"), "r");
+        fgets(token, sizeof(token), fp);
+        printf("[+] Music-Token: %.14s...\n", token);
+        return;
+    }
     FILE *fp = fopen(strcat_b(args_info.base_dir_arg, "/MUSIC_TOKEN"), "w");
     char *guid = get_guid();
     char *dev_token = get_dev_token();
