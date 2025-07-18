@@ -345,6 +345,12 @@ extern void *pbErrCallback;
 
 inline static uint8_t login(struct shared_ptr reqCtx) {
     fprintf(stderr, "[+] logging in...\n");
+    if (file_exists(strcat_b(args_info.base_dir_arg, "/STOREFRONT_ID"))) {
+        remove(strcat_b(args_info.base_dir_arg, "/STOREFRONT_ID"));
+    }
+    if (file_exists(strcat_b(args_info.base_dir_arg, "/MUSIC_TOKEN"))) {
+        remove(strcat_b(args_info.base_dir_arg, "/MUSIC_TOKEN"));
+    }
     struct shared_ptr flow;
     _ZNSt6__ndk110shared_ptrIN17storeservicescore16AuthenticateFlowEE11make_sharedIJRNS0_INS1_14RequestContextEEEEEES3_DpOT_(
         &flow, &reqCtx);
