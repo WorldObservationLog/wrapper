@@ -870,7 +870,19 @@ char* get_dev_token() {
 }
 
 void write_music_token(struct shared_ptr reqCtx) {
+    int token_file_available = 0;
     if (file_exists(strcat_b(args_info.base_dir_arg, "/MUSIC_TOKEN"))) {
+        FILE *fp = fopen(strcat_b(args_info.base_dir_arg, "/MUSIC_TOKEN"), "r");
+        if (NULL != fp) {
+            fseek (fp, 0, SEEK_END);
+            long size = ftell(fp);
+
+            if (0 != size) {
+                token_file_available = 1;
+            }
+        }
+    }
+    if (token_file_available) {
         char token[256];
         FILE *fp = fopen(strcat_b(args_info.base_dir_arg, "/MUSIC_TOKEN"), "r");
         fgets(token, sizeof(token), fp);
