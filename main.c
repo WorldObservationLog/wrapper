@@ -15,6 +15,7 @@
 
 #include "import.h"
 #include "cmdline.h"
+#include "cjson/cjson.h"
 #ifndef MyRelease
 #include "subhook/subhook.c"
 #include "subhook/subhook.h"
@@ -31,10 +32,6 @@ int decryptCount = 1000;
 int32_t CURLOPT_SSL_VERIFYPEER = 64;
 int32_t CURLOPT_SSL_VERIFYHOST = 81;
 int32_t CURLOPT_PINNEDPUBLICKEY = 10230;
-
-int32_t CURLOPT_CUSTOMREQUEST = 10036;
-int32_t CURLOPT_URL = 10002;
-int32_t CURLOPT_POSTFIELDS = 10015;
 
 subhook_t curl_hook;
 
@@ -727,16 +724,6 @@ long long getCurrentTimeMillis() {
     return tv.tv_sec * 1000LL + tv.tv_usec / 1000;
 }
 
-char* extract_music_token(const char* json_str) {
-    const char* start = strstr(json_str, "music_token") + 13;
-    while (*start == ' ' || *start == '"') start++;
-    const char* end = strchr(start, '"');
-    size_t len = end - start;
-    char* token = (char*)malloc(len + 1);
-    memcpy(token, start, len);
-    token[len] = '\0';
-    return token;
-}
 
 char *get_music_user_token(char *guid, char *authToken, struct shared_ptr reqCtx){
     uint8_t ptr[480];
@@ -782,91 +769,47 @@ char *get_music_user_token(char *guid, char *authToken, struct shared_ptr reqCtx
     void** data_ptr_location = (void**)((char*)http_message_obj + 48);
     void* data_ptr = *data_ptr_location;
     char *respBody = _ZNK13mediaplatform4Data5bytesEv(data_ptr);
-    char *token = extract_music_token(respBody);
-    char *result = strdup(token); 
+    cJSON *json = cJSON_Parse(respBody);
+    cJSON *token_obj = cJSON_GetObjectItemCaseSensitive(json, "music_token");
+    char *token = cJSON_GetStringValue(token_obj);
+    char *result = strdup(token);
     return result;
 }
 
-struct MemoryStruct {
-    char* memory;
-    size_t size;
-    size_t capacity;
-};
 
-static size_t write_cb(void* data, size_t size, size_t nmemb, void* userp) {
-    size_t realsize = size * nmemb;
-    struct MemoryStruct* mem = (struct MemoryStruct*)userp;
-
-    if (mem->size + realsize + 1 > mem->capacity) {
-        size_t new_capacity = (mem->capacity == 0) ? 
-            (1024 * 1024) :  
-            (mem->capacity * 2);  
-        
-        while (new_capacity < mem->size + realsize + 1) {
-            new_capacity *= 2;
-        }
-
-        char* ptr = realloc(mem->memory, new_capacity);
-        if (!ptr) {
-            printf("Failed to allocate memory\n");
-            return 0;
-        }
-        mem->memory = ptr;
-        mem->capacity = new_capacity;
+char* get_dev_token(struct shared_ptr reqCtx) {
+    uint8_t ptr[480];
+    *(void **)(ptr) =
+        &_ZTVNSt6__ndk120__shared_ptr_emplaceIN13mediaplatform11HTTPMessageENS_9allocatorIS2_EEEE +
+        2;
+    struct shared_ptr httpMessage = {.obj = ptr + 32, .ctrl_blk = ptr};
+    union std_string url = new_std_string("https://sf-api-token-service.itunes.apple.com/apiToken");
+    union std_string method = new_std_string("GET");
+    _ZN13mediaplatform11HTTPMessageC2ENSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEES7_(httpMessage.obj, &url, &method);
+    uint8_t urlRequest[512];
+    _ZN17storeservicescore10URLRequestC2ERKNSt6__ndk110shared_ptrIN13mediaplatform11HTTPMessageEEERKNS2_INS_14RequestContextEEE(urlRequest, &httpMessage, &reqCtx);
+    union std_string clientIdName = new_std_string("clientId");
+    union std_string clientIdValue = new_std_string("musicAndroid");
+    _ZN17storeservicescore10URLRequest19setRequestParameterERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEES9_(urlRequest, &clientIdName, &clientIdValue);
+    union std_string versionName = new_std_string("version");
+    union std_string versionValue = new_std_string("1");
+    _ZN17storeservicescore10URLRequest19setRequestParameterERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEES9_(urlRequest, &versionName, &versionValue);
+    _ZN17storeservicescore10URLRequest3runEv(urlRequest);
+    struct shared_ptr *err = _ZNK17storeservicescore10URLRequest5errorEv(urlRequest);
+    if (err->obj != NULL) {
+        return "";
     }
-
-    memcpy(&(mem->memory[mem->size]), data, realsize);
-    mem->size += realsize;
-    mem->memory[mem->size] = 0;
-    return realsize;
-}
-
-char* get_dev_token() {
-    void *curl = curl_easy_init();
-    struct MemoryStruct html = {NULL, 0, 0};
-    struct MemoryStruct js = {NULL, 0, 0};
-    char* token = NULL;
-    
-    curl_easy_setopt(curl, 10002L, "https://beta.music.apple.com");
-    curl_easy_setopt(curl, 20011L, write_cb);
-    curl_easy_setopt(curl, 10001L, &html);
-    curl_easy_setopt(curl, 64, 0L);
-    curl_easy_setopt(curl, 81, 0L);
-    curl_easy_perform(curl);
-
-    if (html.memory) {
-        char* js_uri = strstr(html.memory, "/assets/index-legacy-");
-        if (js_uri) {
-            char url[256] = "https://beta.music.apple.com";
-            strncat(url, js_uri, strchr(js_uri, (int)'.') + 3 - js_uri);
-            
-            curl_easy_setopt(curl, 10002L, url);
-            curl_easy_setopt(curl, 10001L, &js);
-            curl_easy_setopt(curl, 64, 0L);
-            curl_easy_setopt(curl, 81, 0L);
-            curl_easy_perform(curl);
-            
-            if (js.memory) {
-                char* token_start = strstr(js.memory, "eyJh");
-                if (token_start) {
-                    char* token_end = strchr(token_start, '"');
-                    if (token_end) {
-                        size_t token_len = token_end - token_start;
-                        token = malloc(token_len + 1);
-                        if (token) {
-                            memcpy(token, token_start, token_len);
-                            token[token_len] = 0;
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    curl_easy_cleanup(curl);
-    free(html.memory);
-    free(js.memory);
-    return token;
+    struct shared_ptr *urlResp = _ZNK17storeservicescore10URLRequest8responseEv(urlRequest);
+    struct shared_ptr *resp = _ZNK17storeservicescore11URLResponse18underlyingResponseEv(urlResp->obj);
+    void *http_message_obj = resp->obj;
+    void** data_ptr_location = (void**)((char*)http_message_obj + 48);
+    void* data_ptr = *data_ptr_location;
+    char *respBody = _ZNK13mediaplatform4Data5bytesEv(data_ptr);
+    cJSON *json = cJSON_Parse(respBody);
+    cJSON *token_obj = cJSON_GetObjectItemCaseSensitive(json, "token");
+    char *token = cJSON_GetStringValue(token_obj);
+    char *result = strdup(token);
+    return result;
 }
 
 void write_music_token(struct shared_ptr reqCtx) {
@@ -891,7 +834,7 @@ void write_music_token(struct shared_ptr reqCtx) {
     }
     FILE *fp = fopen(strcat_b(args_info.base_dir_arg, "/MUSIC_TOKEN"), "w");
     char *guid = get_guid();
-    char *dev_token = get_dev_token();
+    char *dev_token = get_dev_token(reqCtx);
     char *token = get_music_user_token(guid, dev_token, reqCtx);
     printf("[+] Music-Token: %.14s...\n", token);
     fprintf(fp, "%s", token);

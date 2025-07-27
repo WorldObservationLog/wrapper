@@ -258,11 +258,14 @@ extern void _ZN13mediaplatform11HTTPMessage11setBodyDataEPcm(void *,char *, u_lo
 extern void *_ZN17storeservicescore10DeviceGUID4guidEv(void *, void *);
 extern char *_ZNK13mediaplatform4Data5bytesEv(void *);
 extern void *_ZN17storeservicescore10URLRequestC2ERKNSt6__ndk110shared_ptrIN13mediaplatform11HTTPMessageEEERKNS2_INS_14RequestContextEEE(void *, struct shared_ptr *, struct shared_ptr *);
+extern void *_ZN17storeservicescore10URLRequest19setRequestParameterERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEES9_(void *, union std_string *, union std_string *);
 extern void *_ZN17storeservicescore10URLRequest3runEv(void *);
 extern struct shared_ptr *_ZNK17storeservicescore10URLRequest5errorEv(void *);
 extern struct shared_ptr *_ZNK17storeservicescore10URLRequest8responseEv(void *);
 extern struct shared_ptr *_ZNK17storeservicescore11URLResponse18underlyingResponseEv(void *);
 
+extern void *_ZN19SVMediaLibraryUtils27parseJSONFileToCFDictionaryERKNSt6__ndk112basic_stringIcNS0_11char_traitsIcEENS0_9allocatorIcEEEE(union std_string *);
+extern union std_string *CFDictionaryGetValue(void *, union std_string *);
 
 const char *const android_id = "dc28071e981c439e";
 const char *const fairplayCert = "MIIEzjCCA7agAwIBAgIIAXAVjHFZDjgwDQYJKoZIhvcNAQEFBQAwfzELMAkGA1UEBhMCVVMxEz"
