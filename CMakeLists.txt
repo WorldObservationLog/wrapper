@@ -36,7 +36,6 @@ find_library(MEDIAPLATFORM_LIB mediaplatform PATHS ${CMAKE_SOURCE_DIR}/rootfs/sy
 find_library(CXX_SHARED_LIB c++_shared PATHS ${CMAKE_SOURCE_DIR}/rootfs/system/lib64)
 find_library(CURL_SHARED_LIB curl PATHS ${CMAKE_SOURCE_DIR}/rootfs/system/lib64)
 find_library(LOG_SHARED_LIB log PATHS ${CMAKE_SOURCE_DIR}/rootfs/system/lib64)
-find_library(CORE_FOUNDATION_LIB CoreFoundation PATHS ${CMAKE_SOURCE_DIR}/rootfs/system/lib64)
 
 # Link libraries
 target_link_libraries(main
@@ -44,7 +43,6 @@ target_link_libraries(main
     ${ANDROIDAPPMUSIC_LIB}
     ${STORESERVICESCORE_LIB}
     ${MEDIAPLATFORM_LIB}
-    ${CORE_FOUNDATION_LIB}
 )
 
 get_target_property(MAIN_COMPILE_DEFINITIONS main COMPILE_DEFINITIONS)
