@@ -10,7 +10,6 @@ extern "C" uint8_t handle_cpp(int fd) {
         return 1;
     } catch (const std::exception &e) {
         fprintf(stderr, "[!] catched an exception: %s\n", e.what());
-        exit(1);
         return 0;
     }
 }
