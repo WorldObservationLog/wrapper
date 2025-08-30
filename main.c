@@ -501,7 +501,6 @@ void handle(const int connfd) {
             NfcRKVnxuKZy04KWbdFu71Ou(*kdContext, 5, sample, sample, size);
             writefull(connfd, sample, size);
             free(sample);
-            decryptCount -= 1;
         }
     }
 }
