@@ -28,6 +28,19 @@ int file_exists(char *filename) {
   return (stat (filename, &buffer) == 0);
 }
 
+char *strcat_b(char *dest, char* src) {
+    size_t len1 = strlen(dest);
+    size_t len2 = strlen(src);
+
+    char *result = malloc(len1 + len2 + 1);
+    if (!result) return NULL; 
+
+    strcpy(result, dest);
+    strcat(result, src);
+
+    return result;
+}
+
 static void dialogHandler(long j, struct shared_ptr *protoDialogPtr,
                           struct shared_ptr *respHandler) {
     const char *const title = std_string_data(
@@ -147,12 +160,11 @@ static inline void init() {
     fprintf(stderr, "[+] starting...\n");
     setenv("ANDROID_DNS_MODE", "local", 1);
     if (args_info.proxy_given) {
-        fprintf(stderr, "[+] Using proxy %s", args_info.proxy_arg);
-        setenv("http_proxy", args_info.proxy_arg, 1);
-        setenv("https_proxy", args_info.proxy_arg, 1);
+        fprintf(stderr, "[+] Using proxy %s\n", args_info.proxy_arg);
+        setenv("all_proxy", args_info.proxy_arg, 1);
     }
 
-    static const char *resolvers[2] = {"1.1.1.1", "1.0.0.1"};
+    static const char *resolvers[2] = {"223.5.5.5", "223.6.6.6"};
     _resolv_set_nameservers_for_net(0, resolvers, 2, ".");
 #ifndef MyRelease
     subhook_install(subhook_new(
@@ -189,7 +201,7 @@ static inline void init() {
 static inline struct shared_ptr init_ctx() {
     fprintf(stderr, "[+] initializing ctx...\n");
 
-    struct shared_ptr *reqCtx = newRequestContext("/data/data/com.apple.android.music/files/mpl_db");
+    struct shared_ptr *reqCtx = newRequestContext(strcat_b(args_info.base_dir_arg, "/mpl_db"));
     struct shared_ptr *reqCtxCfg = getRequestContextConfig();
 
     prepareRequestContextConfig(reqCtxCfg);
@@ -197,7 +209,7 @@ static inline struct shared_ptr init_ctx() {
 
     static uint8_t buf[88];
     initRequestContext(buf, reqCtx, reqCtxCfg);
-    setFairPlayDirectoryPath(reqCtx, "/data/data/com.apple.android.music/files");
+    setFairPlayDirectoryPath(reqCtx, args_info.base_dir_arg);
     initPresentationInterface(&apInf, &dialogHandler, &credentialHandler);
     setPresentationInterface(reqCtx, &apInf);
 
@@ -209,6 +221,12 @@ extern void *pbErrCallback;
 
 inline static uint8_t login(struct shared_ptr reqCtx) {
     fprintf(stderr, "[+] logging in...\n");
+    if (file_exists(strcat_b(args_info.base_dir_arg, "/STOREFRONT_ID"))) {
+        remove(strcat_b(args_info.base_dir_arg, "/STOREFRONT_ID"));
+    }
+    if (file_exists(strcat_b(args_info.base_dir_arg, "/MUSIC_TOKEN"))) {
+        remove(strcat_b(args_info.base_dir_arg, "/MUSIC_TOKEN"));
+    }
     struct shared_ptr flow;
     _ZNSt6__ndk110shared_ptrIN17storeservicescore16AuthenticateFlowEE11make_sharedIJRNS0_INS1_14RequestContextEEEEEES3_DpOT_ASM(
         &flow, &reqCtx);
@@ -421,13 +439,38 @@ const char* get_m3u8_method_play(uint8_t leaseMgr[16], unsigned long adam) {
     _ZN22SVPlaybackLeaseManager12requestAssetERKmRKNSt6__ndk16vectorINS2_12basic_stringIcNS2_11char_traitsIcEENS2_9allocatorIcEEEENS7_IS9_EEEERKbASM(
         &ptr_result, leaseMgr, &adam, &HLSParam, &z0
     );
+    
+    if (ptr_result.obj == NULL) {
+        return NULL;
+    }
+
     if (_ZNK23SVPlaybackAssetResponse13hasValidAssetEv(ptr_result.obj)) {
         struct shared_ptr *playbackAsset = _ZNK23SVPlaybackAssetResponse13playbackAssetEv(ptr_result.obj);
-        union std_string *m3u8 = malloc(24);
+        if (playbackAsset == NULL || playbackAsset->obj == NULL) {
+            return NULL;
+        }
+
+        union std_string *m3u8 = malloc(sizeof(union std_string));
+        if (m3u8 == NULL) {
+            return NULL;
+        }
+
         void *playbackObj = playbackAsset->obj;
         _ZNK17storeservicescore13PlaybackAsset9URLStringEvASM(m3u8, playbackObj);
+
+        if (m3u8 == NULL || std_string_data(m3u8) == NULL) {
+            free(m3u8);
+            return NULL;
+        }
+        
         const char *m3u8_str = std_string_data(m3u8);
-        return m3u8_str;
+        if (m3u8_str) {
+            char *result = strdup(m3u8_str);  // Make a copy
+            free(m3u8);
+            return result;
+        } else {
+            return NULL;
+        }
     } else {
         return NULL;
     }
@@ -527,11 +570,9 @@ int main(int argc, char *argv[]) {
     _ZN22SVPlaybackLeaseManager12requestLeaseERKb(leaseMgr, &autom);
     FHinstance = getFootHillInstance();
 
-    if (args_info.m3u8_port_given) {
-        pthread_t m3u8_thread;
-        pthread_create(&m3u8_thread, NULL, &new_socket_m3u8, NULL);
-    } else {
-        fprintf(stderr, "[!] The feature of getting m3u8 is defaultly disabled because it's unstable now. To enable it, please manually specify m3u8-port param.\n");
-    }
+    pthread_t m3u8_thread;
+    pthread_create(&m3u8_thread, NULL, &new_socket_m3u8, NULL);
+    pthread_detach(m3u8_thread);
+
     return new_socket();
 }

@@ -7,3 +7,4 @@ option "m3u8-port" M "" int optional default="20020"
 option "proxy" P "" string optional default=""
 option "login" L "username:password" string optional
 option "code-from-file" F "" flag off
+option "base-dir" B "" string optional default="/data/data/com.apple.android.music/files"
