@@ -18,13 +18,15 @@ set(CMAKE_CXX_FLAGS "-g -Wall -Werror")
 
 set(CMDLINE_SOURCE cmdline.c)
 set(HANDLE_SOURCE main.cpp)
+set(CJSON_SOURCE cjson/cjson.c)
 set(MAIN_SOURCE main.c)
 set(WRAPPER_SOURCE wrapper.c)
 
 add_library(cmdline_object OBJECT ${CMDLINE_SOURCE})
 add_library(handle_object OBJECT ${HANDLE_SOURCE})
+add_library(cjson_object OBJECT ${CJSON_SOURCE})
 
-add_executable(main ${MAIN_SOURCE} $<TARGET_OBJECTS:cmdline_object> $<TARGET_OBJECTS:handle_object>)
+add_executable(main ${MAIN_SOURCE} $<TARGET_OBJECTS:cmdline_object> $<TARGET_OBJECTS:handle_object> $<TARGET_OBJECTS:cjson_object>)
 
 set_target_properties(main PROPERTIES 
     COMPILE_DEFINITIONS "MyRelease"

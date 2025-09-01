@@ -283,6 +283,42 @@ void _ZN17storeservicescore10DeviceGUID9configureERKNSt6__ndk112basic_stringIcNS
     );
 }
 
+// --- token service ---
+extern union std_string *_ZNK17storeservicescore14RequestContext20storeFrontIdentifierERKNSt6__ndk110shared_ptrINS_6URLBagEEE(void *, void *, struct shared_ptr *);
+void _ZNK17storeservicescore14RequestContext20storeFrontIdentifierERKNSt6__ndk110shared_ptrINS_6URLBagEEEASM(void *p1, void *p2, struct shared_ptr *p3) {
+    asm volatile(
+        "mov x8, %0\n"
+        "mov x0, %1\n"
+        "mov x1, %2\n"
+        "bl _ZNK17storeservicescore14RequestContext20storeFrontIdentifierERKNSt6__ndk110shared_ptrINS_6URLBagEEE\n"
+        :
+        :"r" (p1), "r" (p2), "r" (p3)
+        : "x8", "x0", "x1", "lr"
+    );
+}
+extern void *_ZTVNSt6__ndk120__shared_ptr_emplaceIN13mediaplatform11HTTPMessageENS_9allocatorIS2_EEEE;
+extern void *_ZN13mediaplatform11HTTPMessageC2ENSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEES7_(void *,  union std_string *, union std_string *);
+extern void _ZN13mediaplatform11HTTPMessage9setHeaderERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEES9_(void *, union std_string *, union std_string *);
+extern void _ZN13mediaplatform11HTTPMessage11setBodyDataEPcm(void *,char *, u_long);
+extern void *_ZN17storeservicescore10DeviceGUID4guidEv(void *p1, void *p2);
+void _ZN17storeservicescore10DeviceGUID4guidEvASM(void *ret_buffer, void *guid_instance) {
+    asm volatile(
+        "mov x8, %0\n"
+        "mov x0, %1\n"
+        "bl _ZN17storeservicescore10DeviceGUID4guidEv\n"
+        :
+        : "r" (ret_buffer), "r" (guid_instance)
+        : "x8", "x0", "lr"
+    );
+}
+extern char *_ZNK13mediaplatform4Data5bytesEv(void *);
+extern void *_ZN17storeservicescore10URLRequestC2ERKNSt6__ndk110shared_ptrIN13mediaplatform11HTTPMessageEEERKNS2_INS_14RequestContextEEE(void *, struct shared_ptr *, struct shared_ptr *);
+extern void *_ZN17storeservicescore10URLRequest19setRequestParameterERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEES9_(void *, union std_string *, union std_string *);
+extern void *_ZN17storeservicescore10URLRequest3runEv(void *);
+extern struct shared_ptr *_ZNK17storeservicescore10URLRequest5errorEv(void *);
+extern struct shared_ptr *_ZNK17storeservicescore10URLRequest8responseEv(void *);
+extern struct shared_ptr *_ZNK17storeservicescore11URLResponse18underlyingResponseEv(void *);
+
 // --- logging ---
 extern uint8_t _ZN13mediaplatform26DebugLogEnabledForPriorityENS_11LogPriorityE();
 extern int __android_log_print(int prio, const char *tag, const char *fmt, ...);

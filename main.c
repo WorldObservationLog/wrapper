@@ -14,6 +14,7 @@
 
 #include "import.h"
 #include "cmdline.h"
+#include "cjson/cjson.h"
 #ifndef MyRelease
 #include "subhook/subhook.c"
 #endif
@@ -22,6 +23,7 @@ static struct shared_ptr apInf;
 static uint8_t leaseMgr[16];
 struct gengetopt_args_info args_info;
 char *amUsername, *amPassword;
+struct shared_ptr GUID;
 
 int file_exists(char *filename) {
   struct stat buffer;   
@@ -99,8 +101,8 @@ static void credentialHandler(struct shared_ptr *credReqHandler,
 
     if (need2FA) {
         if (args_info.code_from_file_flag) {
-            fprintf(stderr, "[!] Enter your 2FA code into rootfs/data/code.txt\n");
-            fprintf(stderr, "[!] Example command: echo -n 114514 > rootfs/data/2fa.txt\n");
+            fprintf(stderr, "[!] Enter your 2FA code into rootfs/%s/2fa.txt\n", args_info.base_dir_arg);
+            fprintf(stderr, "[!] Example command: echo -n 114514 > rootfs/%s/2fa.txt\n", args_info.base_dir_arg);
             fprintf(stderr, "[!] Waiting for input...\n");
             int count = 0;
             while (1)
@@ -109,10 +111,11 @@ static void credentialHandler(struct shared_ptr *credReqHandler,
                     fprintf(stderr, "[!] Failed to get 2FA Code in 60s. Exiting...\n");
                     exit(0);
                 }
-                if (file_exists("/data/2fa.txt")) {
-                    FILE *fp = fopen("/data/2fa.txt", "r");
+                char *path = strcat_b(args_info.base_dir_arg, "/2fa.txt");
+                if (file_exists(path)) {
+                    FILE *fp = fopen(path, "r");
                     fscanf(fp, "%6s", amPassword + passLen);
-                    remove("/data/2fa.txt");
+                    remove(path);
                     fprintf(stderr, "[!] Code file detected! Logging in...\n");
                     break;
                 } else {
@@ -188,7 +191,6 @@ static inline void init() {
     //     foothill, &root, &natLib);
     // _ZN8FootHill24defaultContextIdentifierEv(foothill);
 
-    struct shared_ptr GUID;
     _ZN17storeservicescore10DeviceGUID8instanceEvASM(&GUID);
 
     static uint8_t ret[88];
@@ -495,11 +497,17 @@ void handle_m3u8(const int connfd) {
         const char *m3u8 = get_m3u8_method_play(leaseMgr, adamID);
         if (m3u8 == NULL) {
             fprintf(stderr, "[.] failed to get m3u8 of adamId: %ld\n", adamID);
-            writefull(connfd, NULL, sizeof(NULL));
+            writefull(connfd, "\n", sizeof("\n"));
         } else {
             fprintf(stderr, "[.] m3u8 adamId: %ld, url: %s\n", adamID, m3u8);
-            strcat((char *)m3u8, "\n");
-            writefull(connfd, (void *)m3u8, strlen(m3u8));
+            char *with_newline = malloc(strlen(m3u8) + 2);
+            if (with_newline) {
+                strcpy(with_newline, m3u8);
+                strcat(with_newline, "\n");
+                writefull(connfd, with_newline, strlen(with_newline));
+                free(with_newline);
+            }
+            free((void *)m3u8);
         }
     }
 }
@@ -549,6 +557,157 @@ static inline void *new_socket_m3u8(void *args) {
     }
 }
 
+char* get_account_storefront_id(struct shared_ptr reqCtx) {
+    union std_string *region = malloc(sizeof(union std_string));
+    struct shared_ptr urlbag = {.obj = 0x0, .ctrl_blk = 0x0};
+    _ZNK17storeservicescore14RequestContext20storeFrontIdentifierERKNSt6__ndk110shared_ptrINS_6URLBagEEEASM(region, reqCtx.obj, &urlbag);
+    const char *region_str = std_string_data(region);
+    if (region_str) {
+        char *result = strdup(region_str); 
+        free(region);
+        return result;
+    } 
+    return NULL;
+}
+
+void write_storefront_id(struct shared_ptr reqCtx) {
+    FILE *fp = fopen(strcat_b(args_info.base_dir_arg, "/STOREFRONT_ID"), "w");
+    char *storefront_id = get_account_storefront_id(reqCtx);
+    printf("[+] StoreFront ID: %s\n", storefront_id);
+    fprintf(fp, "%s", get_account_storefront_id(reqCtx));
+    fclose(fp);
+}
+
+char *get_guid() {
+    char *ret[2];
+    _ZN17storeservicescore10DeviceGUID4guidEvASM(ret, GUID.obj);
+    char *guid = _ZNK13mediaplatform4Data5bytesEv(ret[0]);
+    return guid;
+}
+
+long long getCurrentTimeMillis() {
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return tv.tv_sec * 1000LL + tv.tv_usec / 1000;
+}
+
+
+char *get_music_user_token(char *guid, char *authToken, struct shared_ptr reqCtx){
+    uint8_t ptr[480];
+    *(void **)(ptr) =
+        &_ZTVNSt6__ndk120__shared_ptr_emplaceIN13mediaplatform11HTTPMessageENS_9allocatorIS2_EEEE +
+        2;
+    struct shared_ptr httpMessage = {.obj = ptr + 32, .ctrl_blk = ptr};
+    union std_string url = new_std_string("https://play.itunes.apple.com/WebObjects/MZPlay.woa/wa/createMusicToken");
+    union std_string method = new_std_string("POST");
+    _ZN13mediaplatform11HTTPMessageC2ENSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEES7_(httpMessage.obj, &url, &method);
+    union std_string contentTypeHeader = new_std_string("Content-Type");
+    union std_string contentTypeValue = new_std_string("application/json; charset=UTF-8");
+    _ZN13mediaplatform11HTTPMessage9setHeaderERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEES9_(httpMessage.obj, &contentTypeHeader, &contentTypeValue);
+    union std_string expectHeader = new_std_string("Expect");
+    union std_string expectValue = new_std_string("");
+    _ZN13mediaplatform11HTTPMessage9setHeaderERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEES9_(httpMessage.obj, &expectHeader, &expectValue);
+    union std_string bundleIdHeader = new_std_string("X-Apple-Requesting-Bundle-Id");
+    union std_string bundleIdValue = new_std_string("com.apple.android.music");
+    _ZN13mediaplatform11HTTPMessage9setHeaderERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEES9_(httpMessage.obj, &bundleIdHeader, &bundleIdValue);
+    union std_string bundleVersionHeader = new_std_string("X-Apple-Requesting-Bundle-Version");
+    union std_string bundleVersionValue = new_std_string("Music/4.9 Android/10 model/Samsung S9 build/7663313 (dt:66)");
+    _ZN13mediaplatform11HTTPMessage9setHeaderERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEES9_(httpMessage.obj, &bundleVersionHeader, &bundleVersionValue);
+    size_t body_size = 512;
+    char *body = (char *)malloc(body_size);
+    if (body == NULL) {
+        return "";
+    }
+
+    snprintf(body, body_size, "{\"guid\":\"%s\",\"assertion\":\"%s\",\"tcc-acceptance-date\":\"%lld\"}", guid, authToken, getCurrentTimeMillis());
+
+    _ZN13mediaplatform11HTTPMessage11setBodyDataEPcm(httpMessage.obj, body, strlen(body));
+    free(body);
+    uint8_t urlRequest[512];
+    _ZN17storeservicescore10URLRequestC2ERKNSt6__ndk110shared_ptrIN13mediaplatform11HTTPMessageEEERKNS2_INS_14RequestContextEEE(urlRequest, &httpMessage, &reqCtx);
+    _ZN17storeservicescore10URLRequest3runEv(urlRequest);
+    struct shared_ptr *err = _ZNK17storeservicescore10URLRequest5errorEv(urlRequest);
+    if (err->obj != NULL) {
+        return "";
+    }
+    struct shared_ptr *urlResp = _ZNK17storeservicescore10URLRequest8responseEv(urlRequest);
+    struct shared_ptr *resp = _ZNK17storeservicescore11URLResponse18underlyingResponseEv(urlResp->obj);
+    void *http_message_obj = resp->obj;
+    void** data_ptr_location = (void**)((char*)http_message_obj + 48);
+    void* data_ptr = *data_ptr_location;
+    char *respBody = _ZNK13mediaplatform4Data5bytesEv(data_ptr);
+    cJSON *json = cJSON_Parse(respBody);
+    cJSON *token_obj = cJSON_GetObjectItemCaseSensitive(json, "music_token");
+    char *token = cJSON_GetStringValue(token_obj);
+    char *result = strdup(token);
+    return result;
+}
+
+
+char* get_dev_token(struct shared_ptr reqCtx) {
+    uint8_t ptr[480];
+    *(void **)(ptr) =
+        &_ZTVNSt6__ndk120__shared_ptr_emplaceIN13mediaplatform11HTTPMessageENS_9allocatorIS2_EEEE +
+        2;
+    struct shared_ptr httpMessage = {.obj = ptr + 32, .ctrl_blk = ptr};
+    union std_string url = new_std_string("https://sf-api-token-service.itunes.apple.com/apiToken");
+    union std_string method = new_std_string("GET");
+    _ZN13mediaplatform11HTTPMessageC2ENSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEES7_(httpMessage.obj, &url, &method);
+    uint8_t urlRequest[512];
+    _ZN17storeservicescore10URLRequestC2ERKNSt6__ndk110shared_ptrIN13mediaplatform11HTTPMessageEEERKNS2_INS_14RequestContextEEE(urlRequest, &httpMessage, &reqCtx);
+    union std_string clientIdName = new_std_string("clientId");
+    union std_string clientIdValue = new_std_string("musicAndroid");
+    _ZN17storeservicescore10URLRequest19setRequestParameterERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEES9_(urlRequest, &clientIdName, &clientIdValue);
+    union std_string versionName = new_std_string("version");
+    union std_string versionValue = new_std_string("1");
+    _ZN17storeservicescore10URLRequest19setRequestParameterERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEES9_(urlRequest, &versionName, &versionValue);
+    _ZN17storeservicescore10URLRequest3runEv(urlRequest);
+    struct shared_ptr *err = _ZNK17storeservicescore10URLRequest5errorEv(urlRequest);
+    if (err->obj != NULL) {
+        return "";
+    }
+    struct shared_ptr *urlResp = _ZNK17storeservicescore10URLRequest8responseEv(urlRequest);
+    struct shared_ptr *resp = _ZNK17storeservicescore11URLResponse18underlyingResponseEv(urlResp->obj);
+    void *http_message_obj = resp->obj;
+    void** data_ptr_location = (void**)((char*)http_message_obj + 48);
+    void* data_ptr = *data_ptr_location;
+    char *respBody = _ZNK13mediaplatform4Data5bytesEv(data_ptr);
+    cJSON *json = cJSON_Parse(respBody);
+    cJSON *token_obj = cJSON_GetObjectItemCaseSensitive(json, "token");
+    char *token = cJSON_GetStringValue(token_obj);
+    char *result = strdup(token);
+    return result;
+}
+
+void write_music_token(struct shared_ptr reqCtx) {
+    int token_file_available = 0;
+    if (file_exists(strcat_b(args_info.base_dir_arg, "/MUSIC_TOKEN"))) {
+        FILE *fp = fopen(strcat_b(args_info.base_dir_arg, "/MUSIC_TOKEN"), "r");
+        if (NULL != fp) {
+            fseek (fp, 0, SEEK_END);
+            long size = ftell(fp);
+
+            if (0 != size) {
+                token_file_available = 1;
+            }
+        }
+    }
+    if (token_file_available) {
+        char token[256];
+        FILE *fp = fopen(strcat_b(args_info.base_dir_arg, "/MUSIC_TOKEN"), "r");
+        fgets(token, sizeof(token), fp);
+        printf("[+] Music-Token: %.14s...\n", token);
+        return;
+    }
+    FILE *fp = fopen(strcat_b(args_info.base_dir_arg, "/MUSIC_TOKEN"), "w");
+    char *guid = get_guid();
+    char *dev_token = get_dev_token(reqCtx);
+    char *token = get_music_user_token(guid, dev_token, reqCtx);
+    printf("[+] Music-Token: %.14s...\n", token);
+    fprintf(fp, "%s", token);
+    fclose(fp);
+}
+
 int main(int argc, char *argv[]) {
     cmdline_parser(argc, argv, &args_info);
 
@@ -569,6 +728,9 @@ int main(int argc, char *argv[]) {
                                                                &autom);
     _ZN22SVPlaybackLeaseManager12requestLeaseERKb(leaseMgr, &autom);
     FHinstance = getFootHillInstance();
+
+    write_storefront_id(ctx);
+    write_music_token(ctx);
 
     pthread_t m3u8_thread;
     pthread_create(&m3u8_thread, NULL, &new_socket_m3u8, NULL);
