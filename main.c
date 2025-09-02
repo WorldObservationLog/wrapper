@@ -449,10 +449,6 @@ void refresh_decrypt_ctx() {
 
 void handle(const int connfd) {
     while (1) {
-        if (decryptCount == 0) {
-            refresh_decrypt_ctx();
-            decryptCount = 1000;
-        }
         uint8_t adamSize;
         if (!readfull(connfd, &adamSize, sizeof(uint8_t)))
             return;
