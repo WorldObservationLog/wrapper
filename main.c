@@ -868,7 +868,7 @@ void write_music_token(struct shared_ptr reqCtx) {
 int main(int argc, char *argv[]) {
     cmdline_parser(argc, argv, &args_info);
     char *copy_that_needs_to_be_freed = NULL;
-    int count = split_string_safe(args_info.device_info_arg, "/", device_infos, 9, &copy_that_needs_to_be_freed);
+    split_string_safe(args_info.device_info_arg, "/", device_infos, 9, &copy_that_needs_to_be_freed);
 
     #ifndef MyRelease
     subhook_install(subhook_new(_ZN13mediaplatform26DebugLogEnabledForPriorityENS_11LogPriorityE, allDebug, SUBHOOK_64BIT_OFFSET));
