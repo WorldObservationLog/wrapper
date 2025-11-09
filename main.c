@@ -27,6 +27,7 @@ struct gengetopt_args_info args_info;
 char *amUsername, *amPassword;
 struct shared_ptr GUID;
 int decryptCount = 1000;
+char *device_infos[9];
 
 #ifndef MyRelease
 int32_t CURLOPT_SSL_VERIFYPEER = 64;
@@ -116,6 +117,33 @@ char *strcat_b(char *dest, char* src) {
     strcat(result, src);
 
     return result;
+}
+
+int split_string_safe(const char *str, const char *delim, char **components, 
+                      int max_components, char **out_copy_to_free) 
+{
+    *out_copy_to_free = NULL;
+
+    char *copy = strdup(str);
+    if (copy == NULL) {
+        return -1; 
+    }
+
+    *out_copy_to_free = copy;
+
+    int count = 0;
+    char *saveptr;
+    char *token;
+
+    token = strtok_r(copy, delim, &saveptr);
+
+    while (token != NULL && count < max_components) {
+        components[count] = token;
+        count++;
+        token = strtok_r(NULL, delim, &saveptr);
+    }
+
+    return count;
 }
 
 static void dialogHandler(long j, struct shared_ptr *protoDialogPtr,
@@ -249,7 +277,7 @@ static inline void init() {
     // for (int i = 0; i < 16; ++i) {
     //     android_id[i] = "0123456789abcdef"[rand() % 16];
     // }
-    union std_string conf1 = new_std_string(android_id);
+    union std_string conf1 = new_std_string(device_infos[8]);
     union std_string conf2 = new_std_string("");
     _ZN14FootHillConfig6configERKNSt6__ndk112basic_stringIcNS0_11char_traitsIcEENS0_9allocatorIcEEEE(
         &conf1);
@@ -289,27 +317,28 @@ static inline struct shared_ptr init_ctx() {
 	// _ZN17storeservicescore20RequestContextConfig9setCPFlagEb(reqCtx.obj, 1);
     _ZN17storeservicescore20RequestContextConfig20setBaseDirectoryPathERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(
         reqCtxCfg.obj, &strBuf);
-    strBuf = new_std_string("Music");
+    strBuf = new_std_string(device_infos[0]);
     _ZN17storeservicescore20RequestContextConfig19setClientIdentifierERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(
         reqCtxCfg.obj, &strBuf);
-    strBuf = new_std_string("4.9");
+    strBuf = new_std_string(device_infos[1]);
     _ZN17storeservicescore20RequestContextConfig20setVersionIdentifierERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(
         reqCtxCfg.obj, &strBuf);
-    strBuf = new_std_string("Android");
+    strBuf = new_std_string(device_infos[2]);
     _ZN17storeservicescore20RequestContextConfig21setPlatformIdentifierERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(
         reqCtxCfg.obj, &strBuf);
-    strBuf = new_std_string("10");
+    strBuf = new_std_string(device_infos[3]);
     _ZN17storeservicescore20RequestContextConfig17setProductVersionERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(
         reqCtxCfg.obj, &strBuf);
-    strBuf = new_std_string("Samsung S9");
+    strBuf = new_std_string(device_infos[4]);
     _ZN17storeservicescore20RequestContextConfig14setDeviceModelERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(
         reqCtxCfg.obj, &strBuf);
-    strBuf = new_std_string("7663313");
+    strBuf = new_std_string(device_infos[5]);
     _ZN17storeservicescore20RequestContextConfig15setBuildVersionERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(
         reqCtxCfg.obj, &strBuf);
-    strBuf = new_std_string("en-US");
+    strBuf = new_std_string(device_infos[6]);
     _ZN17storeservicescore20RequestContextConfig19setLocaleIdentifierERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(
         reqCtxCfg.obj, &strBuf);
+    strBuf = new_std_string(device_infos[7]);
     _ZN17storeservicescore20RequestContextConfig21setLanguageIdentifierERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(
         reqCtxCfg.obj, &strBuf);
 
@@ -838,6 +867,8 @@ void write_music_token(struct shared_ptr reqCtx) {
 
 int main(int argc, char *argv[]) {
     cmdline_parser(argc, argv, &args_info);
+    char *copy_that_needs_to_be_freed = NULL;
+    int count = split_string_safe(args_info.device_info_arg, "/", device_infos, 9, &copy_that_needs_to_be_freed);
 
     #ifndef MyRelease
     subhook_install(subhook_new(_ZN13mediaplatform26DebugLogEnabledForPriorityENS_11LogPriorityE, allDebug, SUBHOOK_64BIT_OFFSET));

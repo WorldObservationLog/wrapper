@@ -34,15 +34,16 @@ const char *gengetopt_args_info_versiontext = "";
 const char *gengetopt_args_info_description = "";
 
 const char *gengetopt_args_info_help[] = {
-  "  -h, --help              Print help and exit",
-  "  -V, --version           Print version and exit",
-  "  -H, --host=STRING         (default=`127.0.0.1')",
-  "  -D, --decrypt-port=INT    (default=`10020')",
-  "  -M, --m3u8-port=INT       (default=`20020')",
-  "  -P, --proxy=STRING        (default=`')",
-  "  -L, --login=STRING      username:password",
-  "  -F, --code-from-file      (default=off)",
-  "  -B, --base-dir=STRING   \n                            (default=`/data/data/com.apple.android.music/files')",
+  "  -h, --help                Print help and exit",
+  "  -V, --version             Print version and exit",
+  "  -H, --host=STRING           (default=`127.0.0.1')",
+  "  -D, --decrypt-port=INT      (default=`10020')",
+  "  -M, --m3u8-port=INT         (default=`20020')",
+  "  -P, --proxy=STRING          (default=`')",
+  "  -L, --login=STRING        username:password",
+  "  -F, --code-from-file        (default=off)",
+  "  -B, --base-dir=STRING     \n                              (default=`/data/data/com.apple.android.music/files')",
+  "  -I, --device-info=STRING  \n                              ClientIdentifier/VersionIdentifier/PlatformIdentifier/ProductVersion/DeviceModel/BuildVersion/LocaleIdentifier/LanguageIdentifier/AndroidID\n                              (default=`Music/4.9/Android/10/Samsung\n                              S9/7663313/en-US/en-US/dc28071e981c439e')",
     0
 };
 
@@ -77,6 +78,7 @@ void clear_given (struct gengetopt_args_info *args_info)
   args_info->login_given = 0 ;
   args_info->code_from_file_given = 0 ;
   args_info->base_dir_given = 0 ;
+  args_info->device_info_given = 0 ;
 }
 
 static
@@ -96,6 +98,8 @@ void clear_args (struct gengetopt_args_info *args_info)
   args_info->code_from_file_flag = 0;
   args_info->base_dir_arg = gengetopt_strdup ("/data/data/com.apple.android.music/files");
   args_info->base_dir_orig = NULL;
+  args_info->device_info_arg = gengetopt_strdup ("Music/4.9/Android/10/Samsung S9/7663313/en-US/en-US/dc28071e981c439e");
+  args_info->device_info_orig = NULL;
   
 }
 
@@ -113,6 +117,7 @@ void init_args_info(struct gengetopt_args_info *args_info)
   args_info->login_help = gengetopt_args_info_help[6] ;
   args_info->code_from_file_help = gengetopt_args_info_help[7] ;
   args_info->base_dir_help = gengetopt_args_info_help[8] ;
+  args_info->device_info_help = gengetopt_args_info_help[9] ;
   
 }
 
@@ -212,6 +217,8 @@ cmdline_parser_release (struct gengetopt_args_info *args_info)
   free_string_field (&(args_info->login_orig));
   free_string_field (&(args_info->base_dir_arg));
   free_string_field (&(args_info->base_dir_orig));
+  free_string_field (&(args_info->device_info_arg));
+  free_string_field (&(args_info->device_info_orig));
   
   
 
@@ -260,6 +267,8 @@ cmdline_parser_dump(FILE *outfile, struct gengetopt_args_info *args_info)
     write_into_file(outfile, "code-from-file", 0, 0 );
   if (args_info->base_dir_given)
     write_into_file(outfile, "base-dir", args_info->base_dir_orig, 0);
+  if (args_info->device_info_given)
+    write_into_file(outfile, "device-info", args_info->device_info_orig, 0);
   
 
   i = EXIT_SUCCESS;
@@ -529,10 +538,11 @@ cmdline_parser_internal (
         { "login",	1, NULL, 'L' },
         { "code-from-file",	0, NULL, 'F' },
         { "base-dir",	1, NULL, 'B' },
+        { "device-info",	1, NULL, 'I' },
         { 0,  0, 0, 0 }
       };
 
-      c = getopt_long (argc, argv, "hVH:D:M:P:L:FB:", long_options, &option_index);
+      c = getopt_long (argc, argv, "hVH:D:M:P:L:FB:I:", long_options, &option_index);
 
       if (c == -1) break;	/* Exit from `while (1)' loop.  */
 
@@ -626,6 +636,18 @@ cmdline_parser_internal (
               &(local_args_info.base_dir_given), optarg, 0, "/data/data/com.apple.android.music/files", ARG_STRING,
               check_ambiguity, override, 0, 0,
               "base-dir", 'B',
+              additional_error))
+            goto failure;
+        
+          break;
+        case 'I':	/* ClientIdentifier/VersionIdentifier/PlatformIdentifier/ProductVersion/DeviceModel/BuildVersion/LocaleIdentifier/LanguageIdentifier/AndroidID.  */
+        
+        
+          if (update_arg( (void *)&(args_info->device_info_arg), 
+               &(args_info->device_info_orig), &(args_info->device_info_given),
+              &(local_args_info.device_info_given), optarg, 0, "Music/4.9/Android/10/Samsung S9/7663313/en-US/en-US/dc28071e981c439e", ARG_STRING,
+              check_ambiguity, override, 0, 0,
+              "device-info", 'I',
               additional_error))
             goto failure;
         

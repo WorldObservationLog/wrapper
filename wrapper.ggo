@@ -8,3 +8,4 @@ option "proxy" P "" string optional default=""
 option "login" L "username:password" string optional
 option "code-from-file" F "" flag off
 option "base-dir" B "" string optional default="/data/data/com.apple.android.music/files"
+option "device-info" I "ClientIdentifier/VersionIdentifier/PlatformIdentifier/ProductVersion/DeviceModel/BuildVersion/LocaleIdentifier/LanguageIdentifier/AndroidID" string optional default="Music/4.9/Android/10/Samsung S9/7663313/en-US/en-US/dc28071e981c439e"

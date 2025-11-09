@@ -59,6 +59,9 @@ struct gengetopt_args_info
   char * base_dir_arg;	/**< @brief  (default='/data/data/com.apple.android.music/files').  */
   char * base_dir_orig;	/**< @brief  original value given at command line.  */
   const char *base_dir_help; /**< @brief  help description.  */
+  char * device_info_arg;	/**< @brief ClientIdentifier/VersionIdentifier/PlatformIdentifier/ProductVersion/DeviceModel/BuildVersion/LocaleIdentifier/LanguageIdentifier/AndroidID (default='Music/4.9/Android/10/Samsung S9/7663313/en-US/en-US/dc28071e981c439e').  */
+  char * device_info_orig;	/**< @brief ClientIdentifier/VersionIdentifier/PlatformIdentifier/ProductVersion/DeviceModel/BuildVersion/LocaleIdentifier/LanguageIdentifier/AndroidID original value given at command line.  */
+  const char *device_info_help; /**< @brief ClientIdentifier/VersionIdentifier/PlatformIdentifier/ProductVersion/DeviceModel/BuildVersion/LocaleIdentifier/LanguageIdentifier/AndroidID help description.  */
   
   unsigned int help_given ;	/**< @brief Whether help was given.  */
   unsigned int version_given ;	/**< @brief Whether version was given.  */
@@ -69,6 +72,7 @@ struct gengetopt_args_info
   unsigned int login_given ;	/**< @brief Whether login was given.  */
   unsigned int code_from_file_given ;	/**< @brief Whether code-from-file was given.  */
   unsigned int base_dir_given ;	/**< @brief Whether base-dir was given.  */
+  unsigned int device_info_given ;	/**< @brief Whether device-info was given.  */
 
 } ;
 
