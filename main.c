@@ -722,6 +722,20 @@ static inline void *new_socket_m3u8(void *args) {
 
 void handle_account(const int connfd, struct shared_ptr reqCtx)
 {
+    char buffer[4096];
+    ssize_t n = read(connfd, buffer, sizeof(buffer) - 1);
+    if (n <= 0) {
+        return;
+    }
+    buffer[n] = '\0';
+
+    // Parse HTTP request (simple check for GET)
+    if (strncmp(buffer, "GET", 3) != 0 && strncmp(buffer, "POST", 4) != 0) {
+        const char *error_response = "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\nContent-Length: 0\r\n\r\n";
+        writefull(connfd, (void *)error_response, strlen(error_response));
+        return;
+    }
+
     char *storefront_id = get_account_storefront_id(reqCtx);
     char *dev_token = get_dev_token(reqCtx);
     char *music_token = get_music_user_token(get_guid(), dev_token, reqCtx);
@@ -729,7 +743,8 @@ void handle_account(const int connfd, struct shared_ptr reqCtx)
     if (storefront_id == NULL || music_token == NULL || dev_token == NULL)
     {
         fprintf(stderr, "[.] failed to get account info\n");
-        writefull(connfd, "ERROR\n", 6);
+        const char *error_response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\nContent-Length: 0\r\n\r\n";
+        writefull(connfd, (void *)error_response, strlen(error_response));
         if (storefront_id)
             free(storefront_id);
         if (dev_token)
@@ -739,13 +754,14 @@ void handle_account(const int connfd, struct shared_ptr reqCtx)
         return;
     }
 
-    // Format response as JSON
-    size_t response_size = 1024;
-    char *response = (char *)malloc(response_size);
-    if (response == NULL)
+    // Format JSON response body
+    size_t json_size = 1024;
+    char *json_body = (char *)malloc(json_size);
+    if (json_body == NULL)
     {
         fprintf(stderr, "[.] failed to allocate memory for account response\n");
-        writefull(connfd, "ERROR\n", 6);
+        const char *error_response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\nContent-Length: 0\r\n\r\n";
+        writefull(connfd, (void *)error_response, strlen(error_response));
         if (storefront_id)
             free(storefront_id);
         if (dev_token)
@@ -755,13 +771,38 @@ void handle_account(const int connfd, struct shared_ptr reqCtx)
         return;
     }
 
-    snprintf(response, response_size, "{\"storefront_id\":\"%s\",\"dev_token\":\"%s\",\"music_token\":\"%s\"}\n",
+    snprintf(json_body, json_size, "{\"storefront_id\":\"%s\",\"dev_token\":\"%s\",\"music_token\":\"%s\"}",
              storefront_id, dev_token, music_token);
 
-    fprintf(stderr, "[.] account info storefront: %s\n", storefront_id);
-    writefull(connfd, response, strlen(response));
+    int json_len = strlen(json_body);
 
-    free(response);
+    // Format HTTP response with headers
+    size_t response_size = 512;
+    char *http_response = (char *)malloc(response_size);
+    if (http_response == NULL)
+    {
+        fprintf(stderr, "[.] failed to allocate memory for HTTP response\n");
+        free(json_body);
+        const char *error_response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\nContent-Length: 0\r\n\r\n";
+        writefull(connfd, (void *)error_response, strlen(error_response));
+        if (storefront_id)
+            free(storefront_id);
+        if (dev_token)
+            free(dev_token);
+        if (music_token)
+            free(music_token);
+        return;
+    }
+
+    snprintf(http_response, response_size, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: %d\r\nConnection: close\r\n\r\n",
+             json_len);
+
+    fprintf(stderr, "[.] account info storefront: %s\n", storefront_id);
+    writefull(connfd, http_response, strlen(http_response));
+    writefull(connfd, json_body, json_len);
+
+    free(http_response);
+    free(json_body);
     if (storefront_id)
         free(storefront_id);
     if (dev_token)
