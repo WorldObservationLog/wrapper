@@ -26,6 +26,7 @@ Usage: wrapper [OPTION]...
   -H, --host=STRING         (default=`127.0.0.1')
   -D, --decrypt-port=INT    (default=`10020')
   -M, --m3u8-port=INT       (default=`20020')
+  -A, --access-port=INT     (default=`30020')
   -P, --proxy=STRING        (default=`')
   -L, --login=STRING        (username:password)
   -F, --code-from-file      (default=off)
