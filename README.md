@@ -32,6 +32,40 @@ Usage: wrapper [OPTION]...
   -F, --code-from-file      (default=off)
 ```
 
+# Build from source
+
+1. Install dependencies:
+
+- Build tools:
+
+  ```
+  sudo apt install build-essential cmake wget
+  ```
+
+- LLVM:
+
+  ```
+  sudo bash -c "$(wget -O - https://apt.llvm.org/llvm.sh)
+  ```
+
+- Android NDK r23b:
+  ```
+  wget -O android-ndk-r23b-linux.zip https://dl.google.com/android/repository/android-ndk-r23b-linux.zip
+  unzip -q -d ~ android-ndk-r23b-linux.zip
+  ```
+
+2. Build
+
+```
+git clone https://github.com/glomatico/wrapper
+cd wrapper
+mkdir build
+cd build
+cmake ..
+make -j$(nproc)
+```
+
+
 # Special thanks
 - Anonymous, for providing the original version of this project and the legacy Frida decryption method.
 - chocomint, for providing support for arm64 arch.
