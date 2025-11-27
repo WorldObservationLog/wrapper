@@ -1,10 +1,11 @@
-FROM ubuntu:latest
+FROM debian:stable-slim
 
+ENV args=""
+
+COPY ./rootfs /app/rootfs
+COPY ./wrapper /app
 WORKDIR /app
-#COPY --from=builder /app /app
-COPY . /app
-ENV args ""
 
-CMD ["bash", "-c", "./wrapper ${args}"]
+CMD ["bash", "-c", "/app/wrapper $args"]
 
-EXPOSE 10020 20020
+EXPOSE 10020 20020 30020
