@@ -29,6 +29,11 @@ struct shared_ptr GUID;
 int decryptCount = 1000;
 char *device_infos[9];
 
+// Account info cache
+static char *g_storefront_id = NULL;
+static char *g_dev_token = NULL;
+static char *g_music_token = NULL;
+
 // Forward declarations
 char* get_account_storefront_id(struct shared_ptr reqCtx);
 char* get_dev_token(struct shared_ptr reqCtx);
@@ -720,7 +725,7 @@ static inline void *new_socket_m3u8(void *args) {
     }
 }
 
-void handle_account(const int connfd, struct shared_ptr reqCtx)
+void handle_account(const int connfd)
 {
     char buffer[4096];
     ssize_t n = read(connfd, buffer, sizeof(buffer) - 1);
@@ -736,24 +741,6 @@ void handle_account(const int connfd, struct shared_ptr reqCtx)
         return;
     }
 
-    char *storefront_id = get_account_storefront_id(reqCtx);
-    char *dev_token = get_dev_token(reqCtx);
-    char *music_token = get_music_user_token(get_guid(), dev_token, reqCtx);
-
-    if (storefront_id == NULL || music_token == NULL || dev_token == NULL)
-    {
-        fprintf(stderr, "[.] failed to get account info\n");
-        const char *error_response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\nContent-Length: 0\r\n\r\n";
-        writefull(connfd, (void *)error_response, strlen(error_response));
-        if (storefront_id)
-            free(storefront_id);
-        if (dev_token)
-            free(dev_token);
-        if (music_token)
-            free(music_token);
-        return;
-    }
-
     // Format JSON response body
     size_t json_size = 1024;
     char *json_body = (char *)malloc(json_size);
@@ -762,17 +749,11 @@ void handle_account(const int connfd, struct shared_ptr reqCtx)
         fprintf(stderr, "[.] failed to allocate memory for account response\n");
         const char *error_response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\nContent-Length: 0\r\n\r\n";
         writefull(connfd, (void *)error_response, strlen(error_response));
-        if (storefront_id)
-            free(storefront_id);
-        if (dev_token)
-            free(dev_token);
-        if (music_token)
-            free(music_token);
         return;
     }
 
     snprintf(json_body, json_size, "{\"storefront_id\":\"%s\",\"dev_token\":\"%s\",\"music_token\":\"%s\"}",
-             storefront_id, dev_token, music_token);
+             g_storefront_id, g_dev_token, g_music_token);
 
     int json_len = strlen(json_body);
 
@@ -785,30 +766,18 @@ void handle_account(const int connfd, struct shared_ptr reqCtx)
         free(json_body);
         const char *error_response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\nContent-Length: 0\r\n\r\n";
         writefull(connfd, (void *)error_response, strlen(error_response));
-        if (storefront_id)
-            free(storefront_id);
-        if (dev_token)
-            free(dev_token);
-        if (music_token)
-            free(music_token);
         return;
     }
 
     snprintf(http_response, response_size, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: %d\r\nConnection: close\r\n\r\n",
              json_len);
 
-    fprintf(stderr, "[.] account info storefront: %s\n", storefront_id);
+    fprintf(stderr, "[.] returning account info, storefront: %s\n", g_storefront_id);
     writefull(connfd, http_response, strlen(http_response));
     writefull(connfd, json_body, json_len);
 
     free(http_response);
     free(json_body);
-    if (storefront_id)
-        free(storefront_id);
-    if (dev_token)
-        free(dev_token);
-    if (music_token)
-        free(music_token);
 }
 
 static inline void *new_socket_account(void *args)
@@ -857,7 +826,7 @@ static inline void *new_socket_account(void *args)
             perror("accept4");
         }
 
-        handle_account(connfd, *reqCtx);
+        handle_account(connfd);
 
         if (close(connfd) == -1)
         {
@@ -879,11 +848,10 @@ char* get_account_storefront_id(struct shared_ptr reqCtx) {
     return NULL;
 }
 
-void write_storefront_id(struct shared_ptr reqCtx) {
+void write_storefront_id(void) {
     FILE *fp = fopen(strcat_b(args_info.base_dir_arg, "/STOREFRONT_ID"), "w");
-    char *storefront_id = get_account_storefront_id(reqCtx);
-    printf("[+] StoreFront ID: %s\n", storefront_id);
-    fprintf(fp, "%s", get_account_storefront_id(reqCtx));
+    printf("[+] StoreFront ID: %s\n", g_storefront_id);
+    fprintf(fp, "%s", g_storefront_id);
     fclose(fp);
 }
 
@@ -988,7 +956,7 @@ char* get_dev_token(struct shared_ptr reqCtx) {
     return result;
 }
 
-void write_music_token(struct shared_ptr reqCtx) {
+void write_music_token(void) {
     int token_file_available = 0;
     if (file_exists(strcat_b(args_info.base_dir_arg, "/MUSIC_TOKEN"))) {
         FILE *fp = fopen(strcat_b(args_info.base_dir_arg, "/MUSIC_TOKEN"), "r");
@@ -1009,11 +977,8 @@ void write_music_token(struct shared_ptr reqCtx) {
         return;
     }
     FILE *fp = fopen(strcat_b(args_info.base_dir_arg, "/MUSIC_TOKEN"), "w");
-    char *guid = get_guid();
-    char *dev_token = get_dev_token(reqCtx);
-    char *token = get_music_user_token(guid, dev_token, reqCtx);
-    printf("[+] Music-Token: %.14s...\n", token);
-    fprintf(fp, "%s", token);
+    printf("[+] Music-Token: %.14s...\n", g_music_token);
+    fprintf(fp, "%s", g_music_token);
     fclose(fp);
 }
 
@@ -1047,8 +1012,14 @@ int main(int argc, char *argv[]) {
     _ZN22SVPlaybackLeaseManager12requestLeaseERKb(leaseMgr, &autom);
     FHinstance = _ZN21SVFootHillSessionCtrl8instanceEv();
 
-    write_storefront_id(ctx);
-    write_music_token(ctx);
+    // Cache account info
+    g_storefront_id = get_account_storefront_id(ctx);
+    g_dev_token = get_dev_token(ctx);
+    g_music_token = get_music_user_token(get_guid(), g_dev_token, ctx);
+    fprintf(stderr, "[+] account info cached successfully\n");
+
+    write_storefront_id();
+    write_music_token();
 
     pthread_t m3u8_thread;
     pthread_create(&m3u8_thread, NULL, &new_socket_m3u8, NULL);
