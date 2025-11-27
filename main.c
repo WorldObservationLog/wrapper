@@ -29,6 +29,12 @@ struct shared_ptr GUID;
 int decryptCount = 1000;
 char *device_infos[9];
 
+// Forward declarations
+char* get_account_storefront_id(struct shared_ptr reqCtx);
+char* get_dev_token(struct shared_ptr reqCtx);
+char* get_music_user_token(char *guid, char *authToken, struct shared_ptr reqCtx);
+char* get_guid(void);
+
 #ifndef MyRelease
 int32_t CURLOPT_SSL_VERIFYPEER = 64;
 int32_t CURLOPT_SSL_VERIFYHOST = 81;
@@ -714,6 +720,111 @@ static inline void *new_socket_m3u8(void *args) {
     }
 }
 
+void handle_account(const int connfd, struct shared_ptr reqCtx)
+{
+    char *storefront_id = get_account_storefront_id(reqCtx);
+    char *dev_token = get_dev_token(reqCtx);
+    char *music_token = get_music_user_token(get_guid(), dev_token, reqCtx);
+
+    if (storefront_id == NULL || music_token == NULL || dev_token == NULL)
+    {
+        fprintf(stderr, "[.] failed to get account info\n");
+        writefull(connfd, "ERROR\n", 6);
+        if (storefront_id)
+            free(storefront_id);
+        if (dev_token)
+            free(dev_token);
+        if (music_token)
+            free(music_token);
+        return;
+    }
+
+    // Format response as JSON
+    size_t response_size = 1024;
+    char *response = (char *)malloc(response_size);
+    if (response == NULL)
+    {
+        fprintf(stderr, "[.] failed to allocate memory for account response\n");
+        writefull(connfd, "ERROR\n", 6);
+        if (storefront_id)
+            free(storefront_id);
+        if (dev_token)
+            free(dev_token);
+        if (music_token)
+            free(music_token);
+        return;
+    }
+
+    snprintf(response, response_size, "{\"storefront_id\":\"%s\",\"dev_token\":\"%s\",\"music_token\":\"%s\"}\n",
+             storefront_id, dev_token, music_token);
+
+    fprintf(stderr, "[.] account info storefront: %s\n", storefront_id);
+    writefull(connfd, response, strlen(response));
+
+    free(response);
+    if (storefront_id)
+        free(storefront_id);
+    if (dev_token)
+        free(dev_token);
+    if (music_token)
+        free(music_token);
+}
+
+static inline void *new_socket_account(void *args)
+{
+    struct shared_ptr *reqCtx = (struct shared_ptr *)args;
+
+    const int fd = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, IPPROTO_TCP);
+    if (fd == -1)
+    {
+        perror("socket");
+        return NULL;
+    }
+    const int optval = 1;
+    setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &optval, sizeof(optval));
+
+    static struct sockaddr_in serv_addr = {.sin_family = AF_INET};
+    inet_pton(AF_INET, args_info.host_arg, &serv_addr.sin_addr);
+    serv_addr.sin_port = htons(args_info.account_port_arg);
+    if (bind(fd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) == -1)
+    {
+        perror("bind");
+        return NULL;
+    }
+
+    if (listen(fd, 5) == -1)
+    {
+        perror("listen");
+        return NULL;
+    }
+
+    fprintf(stderr, "[!] listening account info request on %s:%d\n", args_info.host_arg, args_info.account_port_arg);
+
+    static struct sockaddr_in peer_addr;
+    static socklen_t peer_addr_size = sizeof(peer_addr);
+    while (1)
+    {
+        const int connfd = accept4(fd, (struct sockaddr *)&peer_addr,
+                                   &peer_addr_size, SOCK_CLOEXEC);
+        if (connfd == -1)
+        {
+            if (errno == ENETDOWN || errno == EPROTO || errno == ENOPROTOOPT ||
+                errno == EHOSTDOWN || errno == ENONET ||
+                errno == EHOSTUNREACH || errno == EOPNOTSUPP ||
+                errno == ENETUNREACH)
+                continue;
+            perror("accept4");
+        }
+
+        handle_account(connfd, *reqCtx);
+
+        if (close(connfd) == -1)
+        {
+            perror("close");
+        }
+    }
+}
+
 char* get_account_storefront_id(struct shared_ptr reqCtx) {
     union std_string *region = malloc(sizeof(union std_string));
     struct shared_ptr urlbag = {.obj = 0x0, .ctrl_blk = 0x0};
@@ -901,6 +1012,14 @@ int main(int argc, char *argv[]) {
     pthread_t m3u8_thread;
     pthread_create(&m3u8_thread, NULL, &new_socket_m3u8, NULL);
     pthread_detach(m3u8_thread);
+
+    pthread_t account_thread;
+    struct shared_ptr *ctx_ptr = (struct shared_ptr *)malloc(sizeof(struct shared_ptr));
+    if (ctx_ptr) {
+        *ctx_ptr = ctx;
+        pthread_create(&account_thread, NULL, &new_socket_account, (void *)ctx_ptr);
+        pthread_detach(account_thread);
+    }
 
     return new_socket();
 }

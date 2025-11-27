@@ -48,6 +48,9 @@ struct gengetopt_args_info
   int m3u8_port_arg;	/**< @brief  (default='20020').  */
   char * m3u8_port_orig;	/**< @brief  original value given at command line.  */
   const char *m3u8_port_help; /**< @brief  help description.  */
+  int account_port_arg;	/**< @brief  (default='30020').  */
+  char * account_port_orig;	/**< @brief  original value given at command line.  */
+  const char *account_port_help; /**< @brief  help description.  */
   char * proxy_arg;	/**< @brief  (default='').  */
   char * proxy_orig;	/**< @brief  original value given at command line.  */
   const char *proxy_help; /**< @brief  help description.  */
@@ -68,6 +71,7 @@ struct gengetopt_args_info
   unsigned int host_given ;	/**< @brief Whether host was given.  */
   unsigned int decrypt_port_given ;	/**< @brief Whether decrypt-port was given.  */
   unsigned int m3u8_port_given ;	/**< @brief Whether m3u8-port was given.  */
+  unsigned int account_port_given ;	/**< @brief Whether account-port was given.  */
   unsigned int proxy_given ;	/**< @brief Whether proxy was given.  */
   unsigned int login_given ;	/**< @brief Whether login was given.  */
   unsigned int code_from_file_given ;	/**< @brief Whether code-from-file was given.  */
