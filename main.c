@@ -782,8 +782,6 @@ void handle_account(const int connfd)
 
 static inline void *new_socket_account(void *args)
 {
-    struct shared_ptr *reqCtx = (struct shared_ptr *)args;
-
     const int fd = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, IPPROTO_TCP);
     if (fd == -1)
     {
