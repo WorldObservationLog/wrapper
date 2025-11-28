@@ -39,7 +39,7 @@ Usage: wrapper [OPTION]...
 - Build tools:
 
   ```
-  sudo apt install build-essential cmake wget
+  sudo apt install build-essential cmake wget unzip git
   ```
 
 - LLVM:
