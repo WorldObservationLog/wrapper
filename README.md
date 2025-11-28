@@ -57,7 +57,7 @@ Usage: wrapper [OPTION]...
 2. Build
 
 ```
-git clone https://github.com/glomatico/wrapper
+git clone https://github.com/WorldObservationLog/wrapper
 cd wrapper
 mkdir build
 cd build
