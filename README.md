@@ -26,10 +26,45 @@ Usage: wrapper [OPTION]...
   -H, --host=STRING         (default=`127.0.0.1')
   -D, --decrypt-port=INT    (default=`10020')
   -M, --m3u8-port=INT       (default=`20020')
+  -A, --account-port=INT    (default=`30020')
   -P, --proxy=STRING        (default=`')
   -L, --login=STRING        (username:password)
   -F, --code-from-file      (default=off)
 ```
+
+# Build from source
+
+1. Install dependencies:
+
+- Build tools:
+
+  ```
+  sudo apt install build-essential cmake wget unzip git
+  ```
+
+- LLVM:
+
+  ```
+  sudo bash -c "$(wget -O - https://apt.llvm.org/llvm.sh)
+  ```
+
+- Android NDK r23b:
+  ```
+  wget -O android-ndk-r23b-linux.zip https://dl.google.com/android/repository/android-ndk-r23b-linux.zip
+  unzip -q -d ~ android-ndk-r23b-linux.zip
+  ```
+
+2. Build:
+
+```
+git clone https://github.com/WorldObservationLog/wrapper
+cd wrapper
+mkdir build
+cd build
+cmake ..
+make -j$(nproc)
+```
+
 
 # Special thanks
 - Anonymous, for providing the original version of this project and the legacy Frida decryption method.

@@ -29,6 +29,11 @@ struct shared_ptr GUID;
 int decryptCount = 1000;
 char *device_infos[9];
 
+// Account info cache
+static char *g_storefront_id = NULL;
+static char *g_dev_token = NULL;
+static char *g_music_token = NULL;
+
 #ifndef MyRelease
 int32_t CURLOPT_SSL_VERIFYPEER = 64;
 int32_t CURLOPT_SSL_VERIFYHOST = 81;
@@ -714,6 +719,114 @@ static inline void *new_socket_m3u8(void *args) {
     }
 }
 
+void handle_account(const int connfd)
+{
+    char buffer[4096];
+    ssize_t n = read(connfd, buffer, sizeof(buffer) - 1);
+    if (n <= 0) {
+        return;
+    }
+    buffer[n] = '\0';
+
+    // Parse HTTP request (simple check for GET)
+    if (strncmp(buffer, "GET", 3) != 0 && strncmp(buffer, "POST", 4) != 0) {
+        const char *error_response = "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\nContent-Length: 0\r\n\r\n";
+        writefull(connfd, (void *)error_response, strlen(error_response));
+        return;
+    }
+
+    // Format JSON response body
+    size_t json_size = 1024;
+    char *json_body = (char *)malloc(json_size);
+    if (json_body == NULL)
+    {
+        fprintf(stderr, "[.] failed to allocate memory for account response\n");
+        const char *error_response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\nContent-Length: 0\r\n\r\n";
+        writefull(connfd, (void *)error_response, strlen(error_response));
+        return;
+    }
+
+    snprintf(json_body, json_size, "{\"storefront_id\":\"%s\",\"dev_token\":\"%s\",\"music_token\":\"%s\"}",
+             g_storefront_id, g_dev_token, g_music_token);
+
+    int json_len = strlen(json_body);
+
+    // Format HTTP response with headers
+    size_t response_size = 512;
+    char *http_response = (char *)malloc(response_size);
+    if (http_response == NULL)
+    {
+        fprintf(stderr, "[.] failed to allocate memory for HTTP response\n");
+        free(json_body);
+        const char *error_response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\nContent-Length: 0\r\n\r\n";
+        writefull(connfd, (void *)error_response, strlen(error_response));
+        return;
+    }
+
+    snprintf(http_response, response_size, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: %d\r\nConnection: close\r\n\r\n",
+             json_len);
+
+    fprintf(stderr, "[.] returning account info, storefront: %s\n", g_storefront_id);
+    writefull(connfd, http_response, strlen(http_response));
+    writefull(connfd, json_body, json_len);
+
+    free(http_response);
+    free(json_body);
+}
+
+static inline void *new_socket_account(void *args)
+{
+    const int fd = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, IPPROTO_TCP);
+    if (fd == -1)
+    {
+        perror("socket");
+        return NULL;
+    }
+    const int optval = 1;
+    setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &optval, sizeof(optval));
+
+    static struct sockaddr_in serv_addr = {.sin_family = AF_INET};
+    inet_pton(AF_INET, args_info.host_arg, &serv_addr.sin_addr);
+    serv_addr.sin_port = htons(args_info.account_port_arg);
+    if (bind(fd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) == -1)
+    {
+        perror("bind");
+        return NULL;
+    }
+
+    if (listen(fd, 5) == -1)
+    {
+        perror("listen");
+        return NULL;
+    }
+
+    fprintf(stderr, "[!] listening account info request on %s:%d\n", args_info.host_arg, args_info.account_port_arg);
+
+    static struct sockaddr_in peer_addr;
+    static socklen_t peer_addr_size = sizeof(peer_addr);
+    while (1)
+    {
+        const int connfd = accept4(fd, (struct sockaddr *)&peer_addr,
+                                   &peer_addr_size, SOCK_CLOEXEC);
+        if (connfd == -1)
+        {
+            if (errno == ENETDOWN || errno == EPROTO || errno == ENOPROTOOPT ||
+                errno == EHOSTDOWN || errno == ENONET ||
+                errno == EHOSTUNREACH || errno == EOPNOTSUPP ||
+                errno == ENETUNREACH)
+                continue;
+            perror("accept4");
+        }
+
+        handle_account(connfd);
+
+        if (close(connfd) == -1)
+        {
+            perror("close");
+        }
+    }
+}
+
 char* get_account_storefront_id(struct shared_ptr reqCtx) {
     union std_string *region = malloc(sizeof(union std_string));
     struct shared_ptr urlbag = {.obj = 0x0, .ctrl_blk = 0x0};
@@ -727,11 +840,10 @@ char* get_account_storefront_id(struct shared_ptr reqCtx) {
     return NULL;
 }
 
-void write_storefront_id(struct shared_ptr reqCtx) {
+void write_storefront_id(void) {
     FILE *fp = fopen(strcat_b(args_info.base_dir_arg, "/STOREFRONT_ID"), "w");
-    char *storefront_id = get_account_storefront_id(reqCtx);
-    printf("[+] StoreFront ID: %s\n", storefront_id);
-    fprintf(fp, "%s", get_account_storefront_id(reqCtx));
+    printf("[+] StoreFront ID: %s\n", g_storefront_id);
+    fprintf(fp, "%s", g_storefront_id);
     fclose(fp);
 }
 
@@ -836,7 +948,7 @@ char* get_dev_token(struct shared_ptr reqCtx) {
     return result;
 }
 
-void write_music_token(struct shared_ptr reqCtx) {
+void write_music_token(void) {
     int token_file_available = 0;
     if (file_exists(strcat_b(args_info.base_dir_arg, "/MUSIC_TOKEN"))) {
         FILE *fp = fopen(strcat_b(args_info.base_dir_arg, "/MUSIC_TOKEN"), "r");
@@ -857,11 +969,8 @@ void write_music_token(struct shared_ptr reqCtx) {
         return;
     }
     FILE *fp = fopen(strcat_b(args_info.base_dir_arg, "/MUSIC_TOKEN"), "w");
-    char *guid = get_guid();
-    char *dev_token = get_dev_token(reqCtx);
-    char *token = get_music_user_token(guid, dev_token, reqCtx);
-    printf("[+] Music-Token: %.14s...\n", token);
-    fprintf(fp, "%s", token);
+    printf("[+] Music-Token: %.14s...\n", g_music_token);
+    fprintf(fp, "%s", g_music_token);
     fclose(fp);
 }
 
@@ -895,12 +1004,22 @@ int main(int argc, char *argv[]) {
     _ZN22SVPlaybackLeaseManager12requestLeaseERKb(leaseMgr, &autom);
     FHinstance = _ZN21SVFootHillSessionCtrl8instanceEv();
 
-    write_storefront_id(ctx);
-    write_music_token(ctx);
+    // Cache account info
+    g_storefront_id = get_account_storefront_id(ctx);
+    g_dev_token = get_dev_token(ctx);
+    g_music_token = get_music_user_token(get_guid(), g_dev_token, ctx);
+    fprintf(stderr, "[+] account info cached successfully\n");
+
+    write_storefront_id();
+    write_music_token();
 
     pthread_t m3u8_thread;
     pthread_create(&m3u8_thread, NULL, &new_socket_m3u8, NULL);
     pthread_detach(m3u8_thread);
+
+    pthread_t account_thread;
+    pthread_create(&account_thread, NULL, &new_socket_account, NULL);
+    pthread_detach(account_thread);
 
     return new_socket();
 }
