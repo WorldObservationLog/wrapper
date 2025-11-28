@@ -34,12 +34,6 @@ static char *g_storefront_id = NULL;
 static char *g_dev_token = NULL;
 static char *g_music_token = NULL;
 
-// Forward declarations
-char* get_account_storefront_id(struct shared_ptr reqCtx);
-char* get_dev_token(struct shared_ptr reqCtx);
-char* get_music_user_token(char *guid, char *authToken, struct shared_ptr reqCtx);
-char* get_guid(void);
-
 #ifndef MyRelease
 int32_t CURLOPT_SSL_VERIFYPEER = 64;
 int32_t CURLOPT_SSL_VERIFYHOST = 81;
