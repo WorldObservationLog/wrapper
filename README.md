@@ -54,7 +54,7 @@ Usage: wrapper [OPTION]...
   unzip -q -d ~ android-ndk-r23b-linux.zip
   ```
 
-2. Build
+2. Build:
 
 ```
 git clone https://github.com/WorldObservationLog/wrapper
