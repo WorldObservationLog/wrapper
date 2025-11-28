@@ -1018,12 +1018,8 @@ int main(int argc, char *argv[]) {
     pthread_detach(m3u8_thread);
 
     pthread_t account_thread;
-    struct shared_ptr *ctx_ptr = (struct shared_ptr *)malloc(sizeof(struct shared_ptr));
-    if (ctx_ptr) {
-        *ctx_ptr = ctx;
-        pthread_create(&account_thread, NULL, &new_socket_account, (void *)ctx_ptr);
-        pthread_detach(account_thread);
-    }
+    pthread_create(&account_thread, NULL, &new_socket_account, NULL);
+    pthread_detach(account_thread);
 
     return new_socket();
 }
