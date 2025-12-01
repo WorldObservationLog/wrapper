@@ -1,0 +1,13 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        TARGET_ARCH: aarch64
+        NDK_VERSION: 23
+    volumes:
+      - ./rootfs/data:/app/rootfs/data
+    environment:
+      USERNAME: ${USERNAME}
+      PASSWORD: ${PASSWORD}

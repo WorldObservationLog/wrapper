@@ -1,0 +1,11 @@
+.editorconfig
+.env
+.git
+.gitattributes
+.github
+.gitignore
+.gitmodules
+.vscode
+Dockerfile
+README.md
+build
