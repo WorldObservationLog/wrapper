@@ -264,6 +264,22 @@ extern struct shared_ptr *_ZNK17storeservicescore10URLRequest5errorEv(void *);
 extern struct shared_ptr *_ZNK17storeservicescore10URLRequest8responseEv(void *);
 extern struct shared_ptr *_ZNK17storeservicescore11URLResponse18underlyingResponseEv(void *);
 
+extern void * _ZN17storeservicescore15PurchaseRequestC2ERKNSt6__ndk110shared_ptrINS_14RequestContextEEE(void *, struct shared_ptr *);
+extern void *_ZN17storeservicescore15PurchaseRequest23setProcessDialogActionsEb(void *, int);
+extern void *_ZN17storeservicescore15PurchaseRequest12setURLBagKeyERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(void *, union std_string *);
+extern void *_ZN17storeservicescore15PurchaseRequest16setBuyParametersERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(void *, union std_string *);
+extern void *_ZN17storeservicescore15PurchaseRequest3runEv(void *);
+extern struct shared_ptr *_ZNK17storeservicescore15PurchaseRequest8responseEv(void *);
+extern struct shared_ptr *_ZN17storeservicescore16PurchaseResponse5errorEv(void *);
+extern struct std_vector _ZNK17storeservicescore16PurchaseResponse5itemsEv(void *);
+extern struct std_vector _ZNK17storeservicescore12PurchaseItem6assetsEv(void *);
+extern union std_string *_ZNK17storeservicescore13PurchaseAsset3URLEv(void *, void *);
+extern int _ZNK17storeservicescore19StoreErrorCondition9errorCodeEv(void *);
+
+extern void *_ZN17storeservicescore14RequestContext8fairPlayEv(void *, void *);
+extern struct std_vector _ZN17storeservicescore8FairPlay21getSubscriptionStatusEv(void *);
+
+
 const char *const android_id = "dc28071e981c439e";
 const char *const fairplayCert = "MIIEzjCCA7agAwIBAgIIAXAVjHFZDjgwDQYJKoZIhvcNAQEFBQAwfzELMAkGA1UEBhMCVVMxEz"
 								 "ARBgNVBAoMCkFwcGxlIEluYy4xJjAkBgNVBAsMHUFwcGxlIENlcnRpZmljYXRpb24gQXV0aG9y"
