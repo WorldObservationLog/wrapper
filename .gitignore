@@ -90,3 +90,7 @@ rootfs/
 wrapper
 rootfs/system/bin/linker64
 build/
+
+# Enviroment Variables
+.env
+!.env.example
