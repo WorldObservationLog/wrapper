@@ -147,35 +147,6 @@ extern void _ZN17storeservicescore20RequestContextConfig14setDeviceModelERKNSt6_
 extern void _ZN17storeservicescore20RequestContextConfig15setBuildVersionERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(void *, union std_string *);
 extern void _ZN17storeservicescore20RequestContextConfig19setLocaleIdentifierERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(void *, union std_string *);
 extern void _ZN17storeservicescore20RequestContextConfig21setLanguageIdentifierERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(void *, union std_string *);
-void prepareRequestContextConfig(struct shared_ptr *reqCtxConfig)
-{
-    union std_string baseDirectoryPath = new_std_string(args_info.base_dir_arg);
-    _ZN17storeservicescore20RequestContextConfig20setBaseDirectoryPathERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(reqCtxConfig->obj, &baseDirectoryPath);
-
-    union std_string clientIdentifier = new_std_string(device_infos[0]);
-    _ZN17storeservicescore20RequestContextConfig19setClientIdentifierERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(reqCtxConfig->obj, &clientIdentifier);
-
-    union std_string versionIdentifier = new_std_string(device_infos[1]);
-    _ZN17storeservicescore20RequestContextConfig20setVersionIdentifierERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(reqCtxConfig->obj, &versionIdentifier);
-
-    union std_string platformIdentifier = new_std_string(device_infos[2]);
-    _ZN17storeservicescore20RequestContextConfig21setPlatformIdentifierERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(reqCtxConfig->obj, &platformIdentifier);
-
-    union std_string productVersion = new_std_string(device_infos[3]);
-    _ZN17storeservicescore20RequestContextConfig17setProductVersionERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(reqCtxConfig->obj, &productVersion);
-
-    union std_string deviceModel = new_std_string(device_infos[4]);
-    _ZN17storeservicescore20RequestContextConfig14setDeviceModelERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(reqCtxConfig->obj, &deviceModel);
-
-    union std_string buildVersion = new_std_string(device_infos[5]);
-    _ZN17storeservicescore20RequestContextConfig15setBuildVersionERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(reqCtxConfig->obj, &buildVersion);
-
-    union std_string locale = new_std_string(device_infos[6]);
-    _ZN17storeservicescore20RequestContextConfig19setLocaleIdentifierERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(reqCtxConfig->obj, &locale);
-
-    union std_string language = new_std_string(device_infos[7]);
-    _ZN17storeservicescore20RequestContextConfig21setLanguageIdentifierERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(reqCtxConfig->obj, &language);
-}
 
 extern void _ZN21RequestContextManager9configureERKNSt6__ndk110shared_ptrIN17storeservicescore14RequestContextEEE(struct shared_ptr *);
 void configureRequestContext(struct shared_ptr *reqCtx)
@@ -320,6 +291,23 @@ extern void *_ZN17storeservicescore10URLRequest3runEv(void *);
 extern struct shared_ptr *_ZNK17storeservicescore10URLRequest5errorEv(void *);
 extern struct shared_ptr *_ZNK17storeservicescore10URLRequest8responseEv(void *);
 extern struct shared_ptr *_ZNK17storeservicescore11URLResponse18underlyingResponseEv(void *);
+
+// --- offline channel ---
+extern void * _ZN17storeservicescore15PurchaseRequestC2ERKNSt6__ndk110shared_ptrINS_14RequestContextEEE(void *, struct shared_ptr *);
+extern void *_ZN17storeservicescore15PurchaseRequest23setProcessDialogActionsEb(void *, int);
+extern void *_ZN17storeservicescore15PurchaseRequest12setURLBagKeyERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(void *, union std_string *);
+extern void *_ZN17storeservicescore15PurchaseRequest16setBuyParametersERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(void *, union std_string *);
+extern void *_ZN17storeservicescore15PurchaseRequest3runEv(void *);
+extern struct shared_ptr *_ZNK17storeservicescore15PurchaseRequest8responseEv(void *);
+extern struct shared_ptr *_ZN17storeservicescore16PurchaseResponse5errorEv(void *);
+extern struct std_vector _ZNK17storeservicescore16PurchaseResponse5itemsEv(void *);
+extern struct std_vector _ZNK17storeservicescore12PurchaseItem6assetsEv(void *);
+extern union std_string *_ZNK17storeservicescore13PurchaseAsset3URLEv(void *, void *);
+extern int _ZNK17storeservicescore19StoreErrorCondition9errorCodeEv(void *);
+
+extern void *_ZN17storeservicescore14RequestContext8fairPlayEv(void *, void *);
+extern struct std_vector _ZN17storeservicescore8FairPlay21getSubscriptionStatusEv(void *);
+
 
 // --- logging ---
 extern uint8_t _ZN13mediaplatform26DebugLogEnabledForPriorityENS_11LogPriorityE();
