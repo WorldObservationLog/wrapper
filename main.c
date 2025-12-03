@@ -512,7 +512,7 @@ const char* get_m3u8_method_download(struct shared_ptr reqCtx, unsigned long ada
         struct std_vector assets = _ZNK17storeservicescore12PurchaseItem6assetsEv(firstItem->obj);
         struct shared_ptr *lastAsset = (struct shared_ptr *)assets.end - 1;
         union std_string *url_str = malloc(sizeof(union std_string));
-        _ZNK17storeservicescore13PurchaseAsset3URLEv(url_str, lastAsset->obj);
+        _ZNK17storeservicescore13PurchaseAsset3URLEvASM(url_str, lastAsset->obj);
         const char *url = std_string_data(url_str);
         if (url) {
             char *result = strdup(url);  // Make a copy
@@ -520,6 +520,7 @@ const char* get_m3u8_method_download(struct shared_ptr reqCtx, unsigned long ada
             return result;
         }
     } 
+    printf("14\n");
     return NULL;
 }
 
@@ -910,7 +911,7 @@ void write_music_token(void) {
 
 int offline_available() {
     struct shared_ptr *fairplay = malloc(16);
-    _ZN17storeservicescore14RequestContext8fairPlayEv(fairplay, reqCtx.obj);
+    _ZN17storeservicescore14RequestContext8fairPlayEvASM(fairplay, reqCtx.obj);
     struct std_vector fairplay_status = _ZN17storeservicescore8FairPlay21getSubscriptionStatusEv(fairplay->obj);
     char *begin_ptr = (char*)fairplay_status.begin;
     char *second_item_ptr = begin_ptr + 16;

@@ -303,9 +303,30 @@ extern struct shared_ptr *_ZN17storeservicescore16PurchaseResponse5errorEv(void 
 extern struct std_vector _ZNK17storeservicescore16PurchaseResponse5itemsEv(void *);
 extern struct std_vector _ZNK17storeservicescore12PurchaseItem6assetsEv(void *);
 extern union std_string *_ZNK17storeservicescore13PurchaseAsset3URLEv(void *, void *);
+void _ZNK17storeservicescore13PurchaseAsset3URLEvASM(void *buf, void *assetObj) {
+    asm volatile(
+        "mov x8, %0\n"       // 将接收返回值的内存地址放入 x8
+        "mov x0, %1\n"       // 将 this 指针放入 x0
+        "bl _ZNK17storeservicescore13PurchaseAsset3URLEv\n" // 调用目标函数
+        :
+        : "r" (buf), "r" (assetObj)
+        : "x8", "x0", "lr", "memory"
+    );
+}
 extern int _ZNK17storeservicescore19StoreErrorCondition9errorCodeEv(void *);
 
 extern void *_ZN17storeservicescore14RequestContext8fairPlayEv(void *, void *);
+void _ZN17storeservicescore14RequestContext8fairPlayEvASM(void *buf, void *reqCtxObj) {
+    asm volatile(
+        "mov x8, %0\n"
+        "mov x0, %1\n"
+        "bl _ZN17storeservicescore14RequestContext8fairPlayEv\n"
+        :
+        : "r" (buf), "r" (reqCtxObj)
+        : "x8", "x0", "lr", "memory"
+    );
+}
+
 extern struct std_vector _ZN17storeservicescore8FairPlay21getSubscriptionStatusEv(void *);
 
 
