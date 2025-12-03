@@ -39,6 +39,7 @@ const char *gengetopt_args_info_help[] = {
   "  -H, --host=STRING           (default=`127.0.0.1')",
   "  -D, --decrypt-port=INT      (default=`10020')",
   "  -M, --m3u8-port=INT         (default=`20020')",
+  "  -A, --account-port=INT      (default=`30020')",
   "  -P, --proxy=STRING          (default=`')",
   "  -L, --login=STRING        username:password",
   "  -F, --code-from-file        (default=off)",
@@ -74,6 +75,7 @@ void clear_given (struct gengetopt_args_info *args_info)
   args_info->host_given = 0 ;
   args_info->decrypt_port_given = 0 ;
   args_info->m3u8_port_given = 0 ;
+  args_info->account_port_given = 0 ;
   args_info->proxy_given = 0 ;
   args_info->login_given = 0 ;
   args_info->code_from_file_given = 0 ;
@@ -91,6 +93,8 @@ void clear_args (struct gengetopt_args_info *args_info)
   args_info->decrypt_port_orig = NULL;
   args_info->m3u8_port_arg = 20020;
   args_info->m3u8_port_orig = NULL;
+  args_info->account_port_arg = 30020;
+  args_info->account_port_orig = NULL;
   args_info->proxy_arg = gengetopt_strdup ("");
   args_info->proxy_orig = NULL;
   args_info->login_arg = NULL;
@@ -113,11 +117,12 @@ void init_args_info(struct gengetopt_args_info *args_info)
   args_info->host_help = gengetopt_args_info_help[2] ;
   args_info->decrypt_port_help = gengetopt_args_info_help[3] ;
   args_info->m3u8_port_help = gengetopt_args_info_help[4] ;
-  args_info->proxy_help = gengetopt_args_info_help[5] ;
-  args_info->login_help = gengetopt_args_info_help[6] ;
-  args_info->code_from_file_help = gengetopt_args_info_help[7] ;
-  args_info->base_dir_help = gengetopt_args_info_help[8] ;
-  args_info->device_info_help = gengetopt_args_info_help[9] ;
+  args_info->account_port_help = gengetopt_args_info_help[5] ;
+  args_info->proxy_help = gengetopt_args_info_help[6] ;
+  args_info->login_help = gengetopt_args_info_help[7] ;
+  args_info->code_from_file_help = gengetopt_args_info_help[8] ;
+  args_info->base_dir_help = gengetopt_args_info_help[9] ;
+  args_info->device_info_help = gengetopt_args_info_help[10] ;
   
 }
 
@@ -211,6 +216,7 @@ cmdline_parser_release (struct gengetopt_args_info *args_info)
   free_string_field (&(args_info->host_orig));
   free_string_field (&(args_info->decrypt_port_orig));
   free_string_field (&(args_info->m3u8_port_orig));
+  free_string_field (&(args_info->account_port_orig));
   free_string_field (&(args_info->proxy_arg));
   free_string_field (&(args_info->proxy_orig));
   free_string_field (&(args_info->login_arg));
@@ -259,6 +265,8 @@ cmdline_parser_dump(FILE *outfile, struct gengetopt_args_info *args_info)
     write_into_file(outfile, "decrypt-port", args_info->decrypt_port_orig, 0);
   if (args_info->m3u8_port_given)
     write_into_file(outfile, "m3u8-port", args_info->m3u8_port_orig, 0);
+  if (args_info->account_port_given)
+    write_into_file(outfile, "account-port", args_info->account_port_orig, 0);
   if (args_info->proxy_given)
     write_into_file(outfile, "proxy", args_info->proxy_orig, 0);
   if (args_info->login_given)
@@ -534,6 +542,7 @@ cmdline_parser_internal (
         { "host",	1, NULL, 'H' },
         { "decrypt-port",	1, NULL, 'D' },
         { "m3u8-port",	1, NULL, 'M' },
+        { "account-port",	1, NULL, 'A' },
         { "proxy",	1, NULL, 'P' },
         { "login",	1, NULL, 'L' },
         { "code-from-file",	0, NULL, 'F' },
@@ -542,7 +551,7 @@ cmdline_parser_internal (
         { 0,  0, 0, 0 }
       };
 
-      c = getopt_long (argc, argv, "hVH:D:M:P:L:FB:I:", long_options, &option_index);
+      c = getopt_long (argc, argv, "hVH:D:M:A:P:L:FB:I:", long_options, &option_index);
 
       if (c == -1) break;	/* Exit from `while (1)' loop.  */
 
@@ -590,6 +599,18 @@ cmdline_parser_internal (
               &(local_args_info.m3u8_port_given), optarg, 0, "20020", ARG_INT,
               check_ambiguity, override, 0, 0,
               "m3u8-port", 'M',
+              additional_error))
+            goto failure;
+        
+          break;
+        case 'A':	/* .  */
+        
+        
+          if (update_arg( (void *)&(args_info->account_port_arg), 
+               &(args_info->account_port_orig), &(args_info->account_port_given),
+              &(local_args_info.account_port_given), optarg, 0, "30020", ARG_INT,
+              check_ambiguity, override, 0, 0,
+              "account-port", 'A',
               additional_error))
             goto failure;
         
