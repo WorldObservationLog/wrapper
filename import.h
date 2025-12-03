@@ -149,30 +149,32 @@ extern void _ZN17storeservicescore20RequestContextConfig19setLocaleIdentifierERK
 extern void _ZN17storeservicescore20RequestContextConfig21setLanguageIdentifierERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(void *, union std_string *);
 void prepareRequestContextConfig(struct shared_ptr *reqCtxConfig)
 {
-    union std_string baseDirectoryPath = new_std_string("/data/data/com.apple.android.music/files/mpl_db");
+    union std_string baseDirectoryPath = new_std_string(args_info.base_dir_arg);
     _ZN17storeservicescore20RequestContextConfig20setBaseDirectoryPathERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(reqCtxConfig->obj, &baseDirectoryPath);
 
-    union std_string clientIdentifier = new_std_string("Music");
+    union std_string clientIdentifier = new_std_string(device_infos[0]);
     _ZN17storeservicescore20RequestContextConfig19setClientIdentifierERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(reqCtxConfig->obj, &clientIdentifier);
 
-    union std_string versionIdentifier = new_std_string("4.9.2");
+    union std_string versionIdentifier = new_std_string(device_infos[1]);
     _ZN17storeservicescore20RequestContextConfig20setVersionIdentifierERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(reqCtxConfig->obj, &versionIdentifier);
 
-    union std_string platformIdentifier = new_std_string("Android");
+    union std_string platformIdentifier = new_std_string(device_infos[2]);
     _ZN17storeservicescore20RequestContextConfig21setPlatformIdentifierERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(reqCtxConfig->obj, &platformIdentifier);
 
-    union std_string productVersion = new_std_string("15");
+    union std_string productVersion = new_std_string(device_infos[3]);
     _ZN17storeservicescore20RequestContextConfig17setProductVersionERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(reqCtxConfig->obj, &productVersion);
 
-    union std_string deviceModel = new_std_string("Pixel 8");
+    union std_string deviceModel = new_std_string(device_infos[4]);
     _ZN17storeservicescore20RequestContextConfig14setDeviceModelERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(reqCtxConfig->obj, &deviceModel);
 
-    union std_string buildVersion = new_std_string("7663313");
+    union std_string buildVersion = new_std_string(device_infos[5]);
     _ZN17storeservicescore20RequestContextConfig15setBuildVersionERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(reqCtxConfig->obj, &buildVersion);
 
-    union std_string locale = new_std_string("en_US");
+    union std_string locale = new_std_string(device_infos[6]);
     _ZN17storeservicescore20RequestContextConfig19setLocaleIdentifierERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(reqCtxConfig->obj, &locale);
-    _ZN17storeservicescore20RequestContextConfig21setLanguageIdentifierERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(reqCtxConfig->obj, &locale);
+
+    union std_string language = new_std_string(device_infos[7]);
+    _ZN17storeservicescore20RequestContextConfig21setLanguageIdentifierERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(reqCtxConfig->obj, &language);
 }
 
 extern void _ZN21RequestContextManager9configureERKNSt6__ndk110shared_ptrIN17storeservicescore14RequestContextEEE(struct shared_ptr *);

@@ -24,6 +24,7 @@ static uint8_t leaseMgr[16];
 struct gengetopt_args_info args_info;
 char *amUsername, *amPassword;
 struct shared_ptr GUID;
+char *device_infos[9];
 
 int file_exists(char *filename) {
   struct stat buffer;   
@@ -41,6 +42,33 @@ char *strcat_b(char *dest, char* src) {
     strcat(result, src);
 
     return result;
+}
+
+int split_string_safe(const char *str, const char *delim, char **components, 
+                      int max_components, char **out_copy_to_free) 
+{
+    *out_copy_to_free = NULL;
+
+    char *copy = strdup(str);
+    if (copy == NULL) {
+        return -1; 
+    }
+
+    *out_copy_to_free = copy;
+
+    int count = 0;
+    char *saveptr;
+    char *token;
+
+    token = strtok_r(copy, delim, &saveptr);
+
+    while (token != NULL && count < max_components) {
+        components[count] = token;
+        count++;
+        token = strtok_r(NULL, delim, &saveptr);
+    }
+
+    return count;
 }
 
 static void dialogHandler(long j, struct shared_ptr *protoDialogPtr,
@@ -179,7 +207,7 @@ static inline void init() {
     // for (int i = 0; i < 16; ++i) {
     //     android_id[i] = "0123456789abcdef"[rand() % 16];
     // }
-    union std_string conf1 = new_std_string(android_id);
+    union std_string conf1 = new_std_string(device_infos[8]);
     union std_string conf2 = new_std_string("");
     _ZN14FootHillConfig6configERKNSt6__ndk112basic_stringIcNS0_11char_traitsIcEENS0_9allocatorIcEEEE(
         &conf1);
@@ -710,6 +738,8 @@ void write_music_token(struct shared_ptr reqCtx) {
 
 int main(int argc, char *argv[]) {
     cmdline_parser(argc, argv, &args_info);
+    char *copy_that_needs_to_be_freed = NULL;
+    split_string_safe(args_info.device_info_arg, "/", device_infos, 9, &copy_that_needs_to_be_freed);
 
     init();
     const struct shared_ptr ctx = init_ctx();
