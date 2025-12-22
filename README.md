@@ -25,7 +25,7 @@ docker build --tag wrapper .
 2. Login:
 
 ```
-docker run -v ./rootfs/data:/app/rootfs/data -e args="-L username:password -F -H 0.0.0.0" wrapper
+docker run -it -v ./rootfs/data:/app/rootfs/data -e args='-L username:password -H 0.0.0.0' wrapper
 ```
 
 3. Run:
