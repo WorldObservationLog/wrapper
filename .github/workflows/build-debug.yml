@@ -27,6 +27,7 @@ jobs:
       
     - name: Build
       run: |
+        git submodule update --recursive --remote
         sed -i '/COMPILE_DEFINITIONS "MyRelease"/d' CMakeLists.txt
         mkdir build
         cd build
