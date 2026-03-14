@@ -6,7 +6,7 @@ include(ExternalProject)
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_CXX_STANDARD 11)
 
-set(ANDROID_NDK_PATH "android-ndk-r23b" CACHE PATH "Android NDK toolchain directory")
+set(ANDROID_NDK_PATH "${CMAKE_CURRENT_SOURCE_DIR}/android-ndk-r23b" CACHE PATH "Android NDK toolchain directory")
 set(TOOLCHAIN "${ANDROID_NDK_PATH}/toolchains/llvm/prebuilt/linux-x86_64")
 
 set(CMAKE_C_COMPILER "${TOOLCHAIN}/bin/x86_64-linux-android22-clang")
