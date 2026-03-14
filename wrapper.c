@@ -1,5 +1,4 @@
 #define _GNU_SOURCE
-
 #include <errno.h>
 #include <sched.h>
 #include <stdio.h>
@@ -8,15 +7,15 @@
 #include <sys/sysmacros.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <sys/mount.h>
 #include <unistd.h>
 #include <string.h>
+#include <fcntl.h>
 
 #include "cmdline.h"
 
 pid_t child_proc = -1;
 struct gengetopt_args_info args_info;
-#define CAP_SYS_ADMIN_IDX 21
-#define CAP_SYS_ADMIN_BIT (1ULL << CAP_SYS_ADMIN_IDX)
 
 static void intHan(int signum) {
     if (child_proc != -1) {
@@ -24,40 +23,43 @@ static void intHan(int signum) {
     }
 }
 
-int has_cap_sys_admin() {
-    FILE *fp;
-    char line[256];
-    unsigned long long cap_eff = 0;
-    int found_cap_eff = 0;
+static int write_file(const char *path, const char *line) {
+    int fd = open(path, O_WRONLY);
+    if (fd < 0) return -1;
+    ssize_t len = strlen(line);
+    ssize_t ret = write(fd, line, len);
+    close(fd);
+    return (ret == len) ? 0 : -1;
+}
 
-    fp = fopen("/proc/self/status", "r");
-    if (fp == NULL) {
-        return 0;
+static int setup_unprivileged_namespaces() {
+    uid_t uid = getuid();
+    gid_t gid = getgid();
+    char buf[128];
+
+    if (unshare(CLONE_NEWUSER | CLONE_NEWNS | CLONE_NEWPID) == -1) {
+        perror("unshare");
+        return -1;
     }
 
-    while (fgets(line, sizeof(line), fp) != NULL) {
-        if (strncmp(line, "CapEff:", 7) == 0) {
-            char *value_str = line + 7;
-            while (*value_str == '\t' || *value_str == ' ') {
-                value_str++;
-            }
-            cap_eff = strtoull(value_str, NULL, 16);
-            found_cap_eff = 1;
-            break;
-        }
+    snprintf(buf, sizeof(buf), "0 %u 1\n", uid);
+    if (write_file("/proc/self/uid_map", buf) == -1) {
+        perror("uid_map");
+        return -1;
     }
 
-    fclose(fp);
-
-    if (!found_cap_eff) {
-        return 0;
+    if (write_file("/proc/self/setgroups", "deny\n") == -1) {
+        perror("setgroups");
+        return -1;
     }
 
-    if (cap_eff & CAP_SYS_ADMIN_BIT) {
-        return 1;
-    } else {
-        return 0;
+    snprintf(buf, sizeof(buf), "0 %u 1\n", gid);
+    if (write_file("/proc/self/gid_map", buf) == -1) {
+        perror("gid_map");
+        return -1;
     }
+
+    return 0;
 }
 
 int main(int argc, char *argv[], char *envp[]) {
@@ -67,24 +69,29 @@ int main(int argc, char *argv[], char *envp[]) {
         return 1;
     }
 
+    if (setup_unprivileged_namespaces() != 0) {
+        return 1;
+    }
+
+    mkdir("./rootfs/dev", 0755);
+    int fd = open("./rootfs/dev/urandom", O_CREAT | O_RDWR, 0666);
+    if (fd >= 0) close(fd);
+
+    if (mount("/dev/urandom", "./rootfs/dev/urandom", NULL, MS_BIND, NULL) != 0) {
+        perror("mount /dev/urandom");
+    }
+
     if (chdir("./rootfs") != 0) {
         perror("chdir");
         return 1;
     }
-    if (chroot("./") != 0) {
+    if (chroot(".") != 0) {
         perror("chroot");
         return 1;
     }
-    mknod("/dev/urandom", S_IFCHR | 0666, makedev(0x1, 0x9));
+
     chmod("/system/bin/linker64", 0755);
     chmod("/system/bin/main", 0755);
-
-    if (has_cap_sys_admin()) {
-        if (unshare(CLONE_NEWPID)) {
-            perror("unshare");
-            return 1;
-        }
-    }
 
     child_proc = fork();
     if (child_proc == -1) {
@@ -97,10 +104,14 @@ int main(int argc, char *argv[], char *envp[]) {
         return 0;
     }
 
-    // Child process logic
     mkdir(args_info.base_dir_arg, 0777);
-    mkdir(strcat(args_info.base_dir_arg, "/mpl_db"), 0777);
+    
+    char db_path[512];
+    snprintf(db_path, sizeof(db_path), "%s/mpl_db", args_info.base_dir_arg);
+    mkdir(db_path, 0777);
+
     execve("/system/bin/main", argv, envp);
+    
     perror("execve");
     return 1;
 }
