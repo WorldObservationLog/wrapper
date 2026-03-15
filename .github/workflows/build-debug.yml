@@ -1,4 +1,4 @@
-name: Build
+name: Build-Debug
 
 on:
   push:
@@ -24,6 +24,8 @@ jobs:
       
     - name: Build
       run: |
+        git submodule update --init --recursive
+        sed -i '/COMPILE_DEFINITIONS "MyRelease"/d' CMakeLists.txt
         mkdir build
         cd build
         cmake ..
@@ -36,23 +38,9 @@ jobs:
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
-        name: Wrapper.x86_64.${{ steps.vars.outputs.sha_short }}
+        name: Wrapper.Debug.x86_64.${{ steps.vars.outputs.sha_short }}
         include-hidden-files: true
         path: |
           rootfs
           wrapper
           Dockerfile
-
-    - name: Create Release Zip File
-      run: zip -r Wrapper.x86_64.${{ steps.vars.outputs.sha_short }}.zip rootfs/ wrapper Dockerfile
-      
-    - name: Create Release
-      uses: softprops/action-gh-release@v2
-      with:
-        files: Wrapper.x86_64.${{ steps.vars.outputs.sha_short }}.zip
-        body: ${{ github.event.head_commit.message }}
-        name: Wrapper.x86_64.${{ steps.vars.outputs.sha_short }}
-        tag_name: Wrapper.x86_64.${{ steps.vars.outputs.sha_short }}
-        make_latest: true
-        
-
