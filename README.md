@@ -14,6 +14,27 @@ Installation methods:
 
 ### Docker
 
+Available complete image for x86_64 arch.
+
+1. First login:
+    ```
+    docker run -it \
+        -v ./data:/app/rootfs/data \
+        -e args='-L username:password -H 0.0.0.0' \
+        ghcr.io/WorldObservationLog/wrapper
+    ```
+
+2. Then run:
+    ```
+    docker run \
+        -v ./data:/app/rootfs/data \
+        -p 10020:10020 -p 20020:20020 -p 30020:30020 \
+        -e args="-H 0.0.0.0" \
+        ghcr.io/WorldObservationLog/wrapper
+    ```
+
+### Docker legacy
+
 Available for x86_64 and arm64. Need to download prebuilt version from releases or actions.
 
 1. Build image:
