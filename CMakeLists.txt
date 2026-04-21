@@ -100,10 +100,10 @@ ExternalProject_Add(
 
 ExternalProject_Add(
     wrapper_rootless_exe
-    PREFIX ${CMAKE_BINARY_DIR}/wrapper_build
+    PREFIX ${CMAKE_BINARY_DIR}/wrapper_rootless_build
     SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}
     CONFIGURE_COMMAND ""
-    BUILD_COMMAND aarch64-linux-gnu-gcc -O3 -Wall -o wrapper ${WRAPPER_ROOTLESS_SOURCE} ${CMAKE_CURRENT_SOURCE_DIR}/cmdline.c
+    BUILD_COMMAND aarch64-linux-gnu-gcc -O3 -Wall -o wrapper_rootless ${WRAPPER_ROOTLESS_SOURCE} ${CMAKE_CURRENT_SOURCE_DIR}/cmdline.c
     BUILD_IN_SOURCE 1
     INSTALL_COMMAND ""
     DEPENDS main
@@ -111,10 +111,10 @@ ExternalProject_Add(
 
 ExternalProject_Add(
     wrapper_android_exe
-    PREFIX ${CMAKE_BINARY_DIR}/wrapper_build
+    PREFIX ${CMAKE_BINARY_DIR}/wrapper_android_build
     SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}
     CONFIGURE_COMMAND ""
-    BUILD_COMMAND aarch64-linux-gnu-gcc -O3 -Wall -o wrapper ${WRAPPER_ANDROID_SOURCE} ${CMAKE_CURRENT_SOURCE_DIR}/cmdline.c
+    BUILD_COMMAND aarch64-linux-gnu-gcc -O3 -Wall -o wrapper_android ${WRAPPER_ANDROID_SOURCE} ${CMAKE_CURRENT_SOURCE_DIR}/cmdline.c
     BUILD_IN_SOURCE 1
     INSTALL_COMMAND ""
     DEPENDS main
