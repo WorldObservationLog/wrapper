@@ -333,3 +333,5 @@ extern struct std_vector _ZN17storeservicescore8FairPlay21getSubscriptionStatusE
 // --- logging ---
 extern uint8_t _ZN13mediaplatform26DebugLogEnabledForPriorityENS_11LogPriorityE();
 extern int __android_log_print(int prio, const char *tag, const char *fmt, ...);
+extern int __android_log_write(int prio, const char *tag, const char *text);
+extern void curl_easy_setopt(void *curl, int32_t option, ...);

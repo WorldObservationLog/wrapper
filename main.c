@@ -6,6 +6,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <stdarg.h>
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -14,9 +15,9 @@
 
 #include "import.h"
 #include "cmdline.h"
-#include "cjson/cjson.h"
+#include "cJSON.h"
 #ifndef MyRelease
-#include "subhook/subhook.c"
+#include "dobby.h"
 #endif
 
 static struct shared_ptr apInf;
@@ -32,6 +33,74 @@ char *device_infos[9];
 static char *g_storefront_id = NULL;
 static char *g_dev_token = NULL;
 static char *g_music_token = NULL;
+
+#ifndef MyRelease
+static int (*orig_debug_log_enabled)(void);
+static int (*orig_android_log_print)(int prio, const char *tag, const char *fmt, ...);
+static int (*orig_android_log_write)(int prio, const char *tag, const char *text);
+static int (*orig_curl_easy_setopt)(void *curl, int option, ...);
+
+int32_t CURLOPT_SSL_VERIFYPEER = 64;
+int32_t CURLOPT_SSL_VERIFYHOST = 81;
+int32_t CURLOPT_PINNEDPUBLICKEY = 10230;
+int32_t CURLOPT_VERBOSE = 43;
+
+int curl_easy_setopt_hook(void *curl, int32_t option, ...) {
+    va_list args;
+    va_start(args, option);
+    void* param = va_arg(args, void*);
+    va_end(args);
+ 
+    if (option == CURLOPT_SSL_VERIFYPEER || 
+        option == CURLOPT_SSL_VERIFYHOST || 
+        option == CURLOPT_PINNEDPUBLICKEY) {
+        printf("[+] hooked curl_easy_setopt %d\n", option);
+        return orig_curl_easy_setopt(curl, option, 0L);
+    } else if (option == CURLOPT_VERBOSE)
+    {
+        printf("[+] hooked curl_easy_setopt %d\n", option);
+        return orig_curl_easy_setopt(curl, option, 1L);
+    } else {
+        return orig_curl_easy_setopt(curl, option, param);
+    }
+ 
+}
+
+int android_log_print_hook(int prio, const char *tag, const char *fmt, ...) {
+    char log_buffer[1024];
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(log_buffer, sizeof(log_buffer), fmt, args);
+    va_end(args);
+    printf("[%s] %s\n", tag, log_buffer);
+    return 0;
+}
+
+int android_log_write_hook(int prio, const char *tag, const char *text) {
+    printf("[%s] %s\n", tag, text);
+    return 0;
+}
+
+static uint8_t allDebug() { return 1; }
+
+void install_hooks() {
+    DobbyHook((void*)_ZN13mediaplatform26DebugLogEnabledForPriorityENS_11LogPriorityE,
+              (void*)allDebug,
+              (void**)&orig_debug_log_enabled);
+
+    DobbyHook((void*)__android_log_print, 
+              (void*)android_log_print_hook, 
+              (void**)&orig_android_log_print);
+
+    DobbyHook((void*)__android_log_write, 
+              (void*)android_log_write_hook, 
+              (void**)&orig_android_log_write);
+
+    DobbyHook((void*)curl_easy_setopt, 
+              (void*)curl_easy_setopt_hook, 
+              (void**)&orig_curl_easy_setopt);
+}
+#endif
 
 int file_exists(char *filename) {
   struct stat buffer;   
@@ -187,10 +256,6 @@ static void credentialHandler(struct shared_ptr *credReqHandler,
         apInf.obj, &credResp);
 }
 
-#ifndef MyRelease
-static uint8_t allDebug() { return 1; }
-#endif
-
 static inline void init() {
     // srand(time(0));
 
@@ -204,11 +269,7 @@ static inline void init() {
 
     static const char *resolvers[2] = {"223.5.5.5", "223.6.6.6"};
     _resolv_set_nameservers_for_net(0, resolvers, 2, ".");
-#ifndef MyRelease
-    subhook_install(subhook_new(
-        _ZN13mediaplatform26DebugLogEnabledForPriorityENS_11LogPriorityE,
-        allDebug, SUBHOOK_64BIT_OFFSET));
-#endif
+
 
     // static char android_id[16];
     // for (int i = 0; i < 16; ++i) {
@@ -926,6 +987,10 @@ int main(int argc, char *argv[]) {
     cmdline_parser(argc, argv, &args_info);
     char *copy_that_needs_to_be_freed = NULL;
     split_string_safe(args_info.device_info_arg, "/", device_infos, 9, &copy_that_needs_to_be_freed);
+
+    #ifndef MyRelease
+    install_hooks();
+    #endif
 
     init();
     reqCtx = init_ctx();
