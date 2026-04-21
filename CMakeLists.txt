@@ -45,7 +45,8 @@ set(CMDLINE_SOURCE cmdline.c)
 set(HANDLE_SOURCE main.cpp)
 set(MAIN_SOURCE main.c)
 set(WRAPPER_SOURCE wrapper.c)
-# OR set(WRAPPER_SOURCE wrapper_rootless.c)
+set(WRAPPER_ROOTLESS_SOURCE wrapper-rootless.c)
+set(WRAPPER_ANDROID_SOURCE wrapper-android.c)
 
 add_library(cmdline_object OBJECT ${CMDLINE_SOURCE})
 add_library(handle_object OBJECT ${HANDLE_SOURCE})
@@ -91,7 +92,29 @@ ExternalProject_Add(
     PREFIX ${CMAKE_BINARY_DIR}/wrapper_build
     SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}
     CONFIGURE_COMMAND ""
-    BUILD_COMMAND ${C_COMPILER} --target=aarch64-linux-gnu -O3 -Wall -o wrapper ${WRAPPER_SOURCE} ${CMAKE_CURRENT_SOURCE_DIR}/cmdline.c
+    BUILD_COMMAND aarch64-linux-gnu-gcc -O3 -Wall -o wrapper ${WRAPPER_SOURCE} ${CMAKE_CURRENT_SOURCE_DIR}/cmdline.c
+    BUILD_IN_SOURCE 1
+    INSTALL_COMMAND ""
+    DEPENDS main
+)
+
+ExternalProject_Add(
+    wrapper_rootless_exe
+    PREFIX ${CMAKE_BINARY_DIR}/wrapper_build
+    SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}
+    CONFIGURE_COMMAND ""
+    BUILD_COMMAND aarch64-linux-gnu-gcc -O3 -Wall -o wrapper ${WRAPPER_ROOTLESS_SOURCE} ${CMAKE_CURRENT_SOURCE_DIR}/cmdline.c
+    BUILD_IN_SOURCE 1
+    INSTALL_COMMAND ""
+    DEPENDS main
+)
+
+ExternalProject_Add(
+    wrapper_android_exe
+    PREFIX ${CMAKE_BINARY_DIR}/wrapper_build
+    SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}
+    CONFIGURE_COMMAND ""
+    BUILD_COMMAND aarch64-linux-gnu-gcc -O3 -Wall -o wrapper ${WRAPPER_ANDROID_SOURCE} ${CMAKE_CURRENT_SOURCE_DIR}/cmdline.c
     BUILD_IN_SOURCE 1
     INSTALL_COMMAND ""
     DEPENDS main

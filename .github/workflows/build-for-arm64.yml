@@ -46,7 +46,12 @@ jobs:
         include-hidden-files: true
         path: |
           rootfs
+          android
           wrapper
+          wrapper-rootless
+          wrapper-android
+          compose.yaml
+          entrypoint.sh
           Dockerfile
   
     - name: Create Release Zip File
