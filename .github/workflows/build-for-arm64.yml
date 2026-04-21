@@ -6,13 +6,17 @@ on:
   pull_request:
     branches: [ "arm64" ]
 
+permissions:
+  contents: write
+
 jobs:
   build:
-
     runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
 
     - name: Install aria2
       run: sudo apt install aria2 -y
@@ -39,28 +43,23 @@ jobs:
       id: vars
       run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: Wrapper.arm64.${{ steps.vars.outputs.sha_short }}
-        include-hidden-files: true
-        path: |
-          rootfs
-          android
-          wrapper
-          wrapper-rootless
-          wrapper-android
-          compose.yaml
-          entrypoint.sh
-          Dockerfile
-  
     - name: Create Release Zip File
-      run: zip -r Wrapper.arm64.${{ steps.vars.outputs.sha_short }}.zip rootfs/ android/ wrapper wrapper-rootless wrapper-android compose.yaml entrypoint.sh Dockerfile
+      run: zip -r Wrapper.arm64.latest.zip rootfs/ android/ wrapper wrapper-rootless wrapper-android compose.yaml entrypoint.sh Dockerfile
       
-    - name: Create Release
+    - name: Update Tag
+      run: |
+        git tag -f wrapper.arm64.latest
+        git push origin wrapper.arm64.latest --force
+
+    - name: Create or Update Release
       uses: softprops/action-gh-release@v2
       with:
-        files: Wrapper.arm64.${{ steps.vars.outputs.sha_short }}.zip
-        body: ${{ github.event.head_commit.message }}
-        name: Wrapper.arm64.${{ steps.vars.outputs.sha_short }}
-        tag_name: Wrapper.arm64.latest
+        files: Wrapper.arm64.latest.zip
+        body: |
+          Latest arm64 build.
+          Commit: ${{ github.sha }}
+          Message: ${{ github.event.head_commit.message }}
+        name: Wrapper.arm64.latest
+        tag_name: wrapper.arm64.latest
+        make_latest: true
+        overwrite: true
