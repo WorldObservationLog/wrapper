@@ -55,7 +55,7 @@ jobs:
           Dockerfile
   
     - name: Create Release Zip File
-      run: zip -r Wrapper.arm64.${{ steps.vars.outputs.sha_short }}.zip rootfs/ wrapper Dockerfile
+      run: zip -r Wrapper.arm64.${{ steps.vars.outputs.sha_short }}.zip rootfs/ android/ wrapper wrapper-rootless wrapper-android compose.yaml entrypoint.sh Dockerfile
       
     - name: Create Release
       uses: softprops/action-gh-release@v2
