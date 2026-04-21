@@ -41,6 +41,9 @@ jobs:
         path: |
           rootfs
           wrapper
+          wrapper-rootless
+          compose.yaml
+          entrypoint.sh
           Dockerfile
 
     - name: Create Release Zip File

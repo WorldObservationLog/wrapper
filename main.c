@@ -43,6 +43,7 @@ static int (*orig_curl_easy_setopt)(void *curl, int option, ...);
 int32_t CURLOPT_SSL_VERIFYPEER = 64;
 int32_t CURLOPT_SSL_VERIFYHOST = 81;
 int32_t CURLOPT_PINNEDPUBLICKEY = 10230;
+int32_t CURLOPT_VERBOSE = 43;
 
 int curl_easy_setopt_hook(void *curl, int32_t option, ...) {
     va_list args;
@@ -54,8 +55,9 @@ int curl_easy_setopt_hook(void *curl, int32_t option, ...) {
         option == CURLOPT_SSL_VERIFYHOST || 
         option == CURLOPT_PINNEDPUBLICKEY) {
         printf("[+] hooked curl_easy_setopt %d\n", option);
+        orig_curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
         return orig_curl_easy_setopt(curl, option, 0L);
-    } else {
+    }  else {
         return orig_curl_easy_setopt(curl, option, param);
     }
  

@@ -42,7 +42,7 @@ set(CMDLINE_SOURCE cmdline.c)
 set(HANDLE_SOURCE main.cpp)
 set(MAIN_SOURCE main.c)
 set(WRAPPER_SOURCE wrapper.c)
-# OR set(WRAPPER_SOURCE wrapper_rootless.c)
+set(WRAPPER_ROOTLESS_SOURCE wrapper-rootless.c)
 
 add_library(cmdline_object OBJECT ${CMDLINE_SOURCE})
 add_library(handle_object OBJECT ${HANDLE_SOURCE})
@@ -89,6 +89,17 @@ ExternalProject_Add(
     SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}
     CONFIGURE_COMMAND ""
     BUILD_COMMAND ${C_COMPILER} -O3 -Wall -o wrapper ${WRAPPER_SOURCE} ${CMAKE_CURRENT_SOURCE_DIR}/cmdline.c
+    BUILD_IN_SOURCE 1
+    INSTALL_COMMAND ""
+    DEPENDS main
+)
+
+ExternalProject_Add(
+    wrapper_rootless_exe
+    PREFIX ${CMAKE_BINARY_DIR}/wrapper_build
+    SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}
+    CONFIGURE_COMMAND ""
+    BUILD_COMMAND ${C_COMPILER} -O3 -Wall -o wrapper ${WRAPPER_ROOTLESS_SOURCE} ${CMAKE_CURRENT_SOURCE_DIR}/cmdline.c
     BUILD_IN_SOURCE 1
     INSTALL_COMMAND ""
     DEPENDS main
