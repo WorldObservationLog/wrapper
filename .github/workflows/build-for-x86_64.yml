@@ -1,4 +1,4 @@
-name: Build
+name: Build for x86_64
 
 on:
   push:
@@ -6,13 +6,17 @@ on:
   pull_request:
     branches: [ "main" ]
 
+permissions:
+  contents: write
+
 jobs:
   build:
-
     runs-on: ubuntu-22.04
 
     steps:
     - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
 
     - name: Install LLVM
       run: sudo bash -c "$(wget -O - https://apt.llvm.org/llvm.sh)"
@@ -33,29 +37,23 @@ jobs:
       id: vars
       run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: Wrapper.x86_64.${{ steps.vars.outputs.sha_short }}
-        include-hidden-files: true
-        path: |
-          rootfs
-          wrapper
-          wrapper-rootless
-          compose.yaml
-          entrypoint.sh
-          Dockerfile
-
     - name: Create Release Zip File
-      run: zip -r Wrapper.x86_64.${{ steps.vars.outputs.sha_short }}.zip rootfs/ wrapper Dockerfile
+      run: zip -r Wrapper.x86_64.latest.zip rootfs/ wrapper wrapper-rootless Dockerfile compose.yaml entrypoint.sh
       
-    - name: Create Release
+    - name: Update Tag
+      run: |
+        git tag -f wrapper.x86_64.latest
+        git push origin wrapper.x86_64.latest --force
+
+    - name: Create or Update Release
       uses: softprops/action-gh-release@v2
       with:
-        files: Wrapper.x86_64.${{ steps.vars.outputs.sha_short }}.zip
-        body: ${{ github.event.head_commit.message }}
-        name: Wrapper.x86_64.${{ steps.vars.outputs.sha_short }}
-        tag_name: Wrapper.x86_64.${{ steps.vars.outputs.sha_short }}
+        files: Wrapper.x86_64.latest.zip
+        body: |
+          Latest build for x86_64.
+          Commit: ${{ github.sha }}
+          Message: ${{ github.event.head_commit.message }}
+        name: Wrapper.x86_64.latest
+        tag_name: wrapper.x86_64.latest
         make_latest: true
-        
-
+        overwrite: true
