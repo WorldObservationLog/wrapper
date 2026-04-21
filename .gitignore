@@ -88,6 +88,8 @@ dkms.conf
 rootfs/
 .vscode/
 wrapper
+wrapper-android
+wrapper-rootless
 rootfs/system/bin/linker64
 build/
 android-ndk-r23b/

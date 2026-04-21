@@ -4,8 +4,32 @@
 #include <sys/wait.h>
 #include <errno.h>
 
+const char* get_best_temp_dir() {
+    char *env_tmp = getenv("TMPDIR");
+    if (env_tmp && access(env_tmp, W_OK) == 0) {
+        return env_tmp;
+    }
+
+    const char *termux_tmp = "/data/data/com.termux/files/usr/tmp";
+    if (access(termux_tmp, W_OK) == 0) {
+        return termux_tmp;
+    }
+
+    const char *android_tmp = "/data/local/tmp";
+    if (access(android_tmp, W_OK) == 0) {
+        return android_tmp;
+    }
+
+    return "/tmp";
+}
+
 void run_proot_encapsulated(char *target_binary, char **extra_args) {
     char *proot_path = "./android/proot";
+
+    char proot_tmp_env[512];
+    const char *tmp_dir = get_best_temp_dir();
+    snprintf(proot_tmp_env, sizeof(proot_tmp_env), "PROOT_TMP_DIR=%s", tmp_dir);
+    printf("[*] Auto-setting %s\n", proot_tmp_env);
 
     char *argv[] = {
         "proot",
@@ -20,6 +44,7 @@ void run_proot_encapsulated(char *target_binary, char **extra_args) {
     };
 
     char *envp[] = {
+        proot_tmp_env,
         NULL
     };
 

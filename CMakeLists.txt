@@ -114,7 +114,7 @@ ExternalProject_Add(
     PREFIX ${CMAKE_BINARY_DIR}/wrapper_android_build
     SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}
     CONFIGURE_COMMAND ""
-    BUILD_COMMAND aarch64-linux-gnu-gcc -O3 -Wall -o wrapper-android ${WRAPPER_ANDROID_SOURCE} ${CMAKE_CURRENT_SOURCE_DIR}/cmdline.c
+    BUILD_COMMAND ${CMAKE_C_COMPILER} -O3 -Wall -o wrapper-android ${WRAPPER_ANDROID_SOURCE} ${CMAKE_CURRENT_SOURCE_DIR}/cmdline.c
     BUILD_IN_SOURCE 1
     INSTALL_COMMAND ""
     DEPENDS main
