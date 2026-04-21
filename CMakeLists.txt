@@ -42,6 +42,7 @@ set(CMDLINE_SOURCE cmdline.c)
 set(HANDLE_SOURCE main.cpp)
 set(MAIN_SOURCE main.c)
 set(WRAPPER_SOURCE wrapper.c)
+# OR set(WRAPPER_SOURCE wrapper_rootless.c)
 
 add_library(cmdline_object OBJECT ${CMDLINE_SOURCE})
 add_library(handle_object OBJECT ${HANDLE_SOURCE})
