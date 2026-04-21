@@ -15,10 +15,9 @@
 
 #include "import.h"
 #include "cmdline.h"
-#include "cjson/cjson.h"
+#include "cJSON.h"
 #ifndef MyRelease
-#include "subhook/subhook.c"
-#include "subhook/subhook.h"
+#include "dobby.h"
 #endif
 
 static struct shared_ptr apInf;
@@ -31,36 +30,35 @@ int decryptCount = 1000;
 int offlineFlag;
 char *device_infos[9];
 
-// Account info cache
 static char *g_storefront_id = NULL;
 static char *g_dev_token = NULL;
 static char *g_music_token = NULL;
 
 #ifndef MyRelease
+static int (*orig_debug_log_enabled)(void);
+static int (*orig_android_log_print)(int prio, const char *tag, const char *fmt, ...);
+static int (*orig_android_log_write)(int prio, const char *tag, const char *text);
+static int (*orig_curl_easy_setopt)(void *curl, int option, ...);
+
 int32_t CURLOPT_SSL_VERIFYPEER = 64;
 int32_t CURLOPT_SSL_VERIFYHOST = 81;
 int32_t CURLOPT_PINNEDPUBLICKEY = 10230;
 
-subhook_t curl_hook;
-
-void curl_easy_setopt_hook(void *curl, int32_t option, ...) {
+int curl_easy_setopt_hook(void *curl, int32_t option, ...) {
     va_list args;
     va_start(args, option);
     void* param = va_arg(args, void*);
-    
-    subhook_remove(curl_hook);
+    va_end(args);
  
     if (option == CURLOPT_SSL_VERIFYPEER || 
         option == CURLOPT_SSL_VERIFYHOST || 
         option == CURLOPT_PINNEDPUBLICKEY) {
-        curl_easy_setopt(curl, option, 0L);
         printf("[+] hooked curl_easy_setopt %d\n", option);
+        return orig_curl_easy_setopt(curl, option, 0L);
     } else {
-        curl_easy_setopt(curl, option, param);
+        return orig_curl_easy_setopt(curl, option, param);
     }
  
-    va_end(args);
-    subhook_install(curl_hook);
 }
 
 int android_log_print_hook(int prio, const char *tag, const char *fmt, ...) {
@@ -78,33 +76,24 @@ int android_log_write_hook(int prio, const char *tag, const char *text) {
     return 0;
 }
 
-void DumpHex(const void* data, size_t size) {
-	char ascii[17];
-	size_t i, j;
-	ascii[16] = '\0';
-	for (i = 0; i < size; ++i) {
-		printf("%02X ", ((unsigned char*)data)[i]);
-		if (((unsigned char*)data)[i] >= ' ' && ((unsigned char*)data)[i] <= '~') {
-			ascii[i % 16] = ((unsigned char*)data)[i];
-		} else {
-			ascii[i % 16] = '.';
-		}
-		if ((i+1) % 8 == 0 || i+1 == size) {
-			printf(" ");
-			if ((i+1) % 16 == 0) {
-				printf("|  %s \n", ascii);
-			} else if (i+1 == size) {
-				ascii[(i+1) % 16] = '\0';
-				if ((i+1) % 16 <= 8) {
-					printf(" ");
-				}
-				for (j = (i+1) % 16; j < 16; ++j) {
-					printf("   ");
-				}
-				printf("|  %s \n", ascii);
-			}
-		}
-	}
+static uint8_t allDebug() { return 1; }
+
+void install_hooks() {
+    DobbyHook((void*)_ZN13mediaplatform26DebugLogEnabledForPriorityENS_11LogPriorityE,
+              (void*)allDebug,
+              (void**)&orig_debug_log_enabled);
+
+    DobbyHook((void*)__android_log_print, 
+              (void*)android_log_print_hook, 
+              (void**)&orig_android_log_print);
+
+    DobbyHook((void*)__android_log_write, 
+              (void*)android_log_write_hook, 
+              (void**)&orig_android_log_write);
+
+    DobbyHook((void*)curl_easy_setopt, 
+              (void*)curl_easy_setopt_hook, 
+              (void**)&orig_curl_easy_setopt);
 }
 #endif
 
@@ -262,9 +251,6 @@ static void credentialHandler(struct shared_ptr *credReqHandler,
         apInf.obj, &credResp);
 }
 
-#ifndef MyRelease
-static uint8_t allDebug() { return 1; }
-#endif
 
 static inline void init() {
     // srand(time(0));
@@ -1031,11 +1017,7 @@ int main(int argc, char *argv[]) {
     split_string_safe(args_info.device_info_arg, "/", device_infos, 9, &copy_that_needs_to_be_freed);
 
     #ifndef MyRelease
-    subhook_install(subhook_new(_ZN13mediaplatform26DebugLogEnabledForPriorityENS_11LogPriorityE, allDebug, SUBHOOK_64BIT_OFFSET));
-    curl_hook = subhook_new(curl_easy_setopt, curl_easy_setopt_hook, SUBHOOK_64BIT_OFFSET);
-    subhook_install(curl_hook);
-    subhook_install(subhook_new(__android_log_print, android_log_print_hook, SUBHOOK_64BIT_OFFSET));
-    subhook_install(subhook_new(__android_log_write, android_log_write_hook, SUBHOOK_64BIT_OFFSET));
+    install_hooks();
     #endif
 
     init();

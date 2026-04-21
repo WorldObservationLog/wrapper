@@ -73,12 +73,28 @@ int main(int argc, char *argv[], char *envp[]) {
         return 1;
     }
 
+    child_proc = fork();
+    if (child_proc == -1) {
+        perror("fork");
+        return 1;
+    }
+
+    if (child_proc > 0) {
+        wait(NULL);
+        return 0;
+    }
+
     mkdir("./rootfs/dev", 0755);
     int fd = open("./rootfs/dev/urandom", O_CREAT | O_RDWR, 0666);
     if (fd >= 0) close(fd);
-
     if (mount("/dev/urandom", "./rootfs/dev/urandom", NULL, MS_BIND, NULL) != 0) {
         perror("mount /dev/urandom");
+    }
+
+    mkdir("./rootfs/proc", 0755);
+    if (mount("proc", "./rootfs/proc", "proc", 0, NULL) != 0) {
+        perror("mount proc");
+        return 1;
     }
 
     if (chdir("./rootfs") != 0) {
@@ -93,18 +109,7 @@ int main(int argc, char *argv[], char *envp[]) {
     chmod("/system/bin/linker64", 0755);
     chmod("/system/bin/main", 0755);
 
-    child_proc = fork();
-    if (child_proc == -1) {
-        perror("fork");
-        return 1;
-    }
-
-    if (child_proc > 0) {
-        wait(NULL);
-        return 0;
-    }
-
-    mkdir(args_info.base_dir_arg, 0777);
+    mkdir(args_info.base_dir_arg, 0777); 
     
     char db_path[512];
     snprintf(db_path, sizeof(db_path), "%s/mpl_db", args_info.base_dir_arg);
