@@ -54,7 +54,7 @@ int curl_easy_setopt_hook(void *curl, int32_t option, ...) {
     if (option == CURLOPT_SSL_VERIFYPEER || 
         option == CURLOPT_SSL_VERIFYHOST || 
         option == CURLOPT_PINNEDPUBLICKEY) {
-        printf("[+] hooked curl_easy_setopt %d\n", option);
+        fprintf(stderr, "[+] hooked curl_easy_setopt %d\n", option);
         orig_curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
         return orig_curl_easy_setopt(curl, option, 0L);
     }  else {
@@ -69,12 +69,12 @@ int android_log_print_hook(int prio, const char *tag, const char *fmt, ...) {
     va_start(args, fmt);
     vsnprintf(log_buffer, sizeof(log_buffer), fmt, args);
     va_end(args);
-    printf("[%s] %s\n", tag, log_buffer);
+    fprintf(stderr, "[%s] %s\n", tag, log_buffer);
     return 0;
 }
 
 int android_log_write_hook(int prio, const char *tag, const char *text) {
-    printf("[%s] %s\n", tag, text);
+    fprintf(stderr, "[%s] %s\n", tag, text);
     return 0;
 }
 
@@ -468,7 +468,7 @@ void refresh_decrypt_ctx() {
     _ZN21SVFootHillSessionCtrl16resetAllContextsEv(FHinstance);
     preshareCtx = NULL;
     preshareCtx = getKdContext("0", "skd://itunes.apple.com/P000000000/s1/e1");
-    printf("[!] refreshed context\n");
+    fprintf(stderr, "[!] refreshed context\n");
 }
 
 void handle(const int connfd) {
@@ -868,7 +868,7 @@ char* get_account_storefront_id(struct shared_ptr reqCtx) {
 
 void write_storefront_id(void) {
     FILE *fp = fopen(strcat_b(args_info.base_dir_arg, "/STOREFRONT_ID"), "w");
-    printf("[+] StoreFront ID: %s\n", g_storefront_id);
+    fprintf(stderr, "[+] StoreFront ID: %s\n", g_storefront_id);
     fprintf(fp, "%s", g_storefront_id);
     fclose(fp);
 }
@@ -991,11 +991,11 @@ void write_music_token(void) {
         char token[256];
         FILE *fp = fopen(strcat_b(args_info.base_dir_arg, "/MUSIC_TOKEN"), "r");
         fgets(token, sizeof(token), fp);
-        printf("[+] Music-Token: %.14s...\n", token);
+        fprintf(stderr, "[+] Music-Token: %.14s...\n", token);
         return;
     }
     FILE *fp = fopen(strcat_b(args_info.base_dir_arg, "/MUSIC_TOKEN"), "w");
-    printf("[+] Music-Token: %.14s...\n", g_music_token);
+    fprintf(stderr, "[+] Music-Token: %.14s...\n", g_music_token);
     fprintf(fp, "%s", g_music_token);
     fclose(fp);
 }
@@ -1041,7 +1041,7 @@ int main(int argc, char *argv[]) {
 
     offlineFlag = offline_available();
     if (offlineFlag) {
-        printf("[+] This account supports offline channel\n");
+        fprintf(stderr, "[+] This account supports offline channel\n");
     }
 
     // Cache account info
