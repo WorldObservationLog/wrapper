@@ -22,7 +22,7 @@ RUN \
 WORKDIR /app
 RUN bash -c "$(wget -O - https://apt.llvm.org/llvm.sh)"
 RUN aria2c -o android-ndk-r${NDK_VERSION}b-linux.zip https://dl.google.com/android/repository/android-ndk-r${NDK_VERSION}b-linux.zip
-RUN unzip -q -d ~ android-ndk-r${NDK_VERSION}b-linux.zip
+RUN unzip -q -d /app android-ndk-r${NDK_VERSION}b-linux.zip
 RUN rm android-ndk-r${NDK_VERSION}b-linux.zip
 COPY ./ ./
 
