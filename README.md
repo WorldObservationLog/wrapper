@@ -25,7 +25,7 @@ docker build --tag wrapper .
 2. Login:
 
 ```
-docker run -it -v ./rootfs/data:/app/rootfs/data -e args='-L username:password -H 0.0.0.0' wrapper
+docker run --privileged --rm -it -v ./rootfs/data:/app/rootfs/data --entrypoint ./wrapper wrapper -L "username:password" -H 0.0.0.0
 ```
 
 Quit after this (using Ctrl-C).
@@ -33,7 +33,7 @@ Quit after this (using Ctrl-C).
 3. Run:
 
 ```
-docker run -v ./rootfs/data:/app/rootfs/data -p 10020:10020 -p 20020:20020 -p 30020:30020 -e args="-H 0.0.0.0" wrapper
+docker run --privileged -v ./rootfs/data:/app/rootfs/data -p 10020:10020 -p 20020:20020 -p 30020:30020 -e args="-H 0.0.0.0" wrapper
 ```
 
 
