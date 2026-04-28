@@ -275,6 +275,9 @@ extern struct std_vector _ZNK17storeservicescore16PurchaseResponse5itemsEv(void 
 extern struct std_vector _ZNK17storeservicescore12PurchaseItem6assetsEv(void *);
 extern union std_string *_ZNK17storeservicescore13PurchaseAsset3URLEv(void *, void *);
 extern int _ZNK17storeservicescore19StoreErrorCondition9errorCodeEv(void *);
+extern const char *_ZNK17storeservicescore19StoreErrorCondition4whatEv(void *);
+extern struct shared_ptr *_ZNK17storeservicescore20AuthenticateResponse5errorEv(void *);
+extern union std_string *_ZNK17storeservicescore20AuthenticateResponse15customerMessageEv(void *);
 
 extern void *_ZN17storeservicescore14RequestContext8fairPlayEv(void *, void *);
 extern struct std_vector _ZN17storeservicescore8FairPlay21getSubscriptionStatusEv(void *);

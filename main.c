@@ -383,7 +383,21 @@ inline static uint8_t login(struct shared_ptr reqCtx) {
     const int respType =
         _ZNK17storeservicescore20AuthenticateResponse12responseTypeEv(
             resp->obj);
-    fprintf(stderr, "[.] response type %d\n", respType);
+    if (respType != 6) {
+        const char *customer_msg = std_string_data(
+            _ZNK17storeservicescore20AuthenticateResponse15customerMessageEv(resp->obj));
+        if (customer_msg && *customer_msg)
+            fprintf(stderr, "[!] server message: %s\n", customer_msg);
+
+        struct shared_ptr *err = _ZNK17storeservicescore20AuthenticateResponse5errorEv(resp->obj);
+        if (err != NULL && err->obj != NULL) {
+            int code = _ZNK17storeservicescore19StoreErrorCondition9errorCodeEv(err->obj);
+            const char *what = _ZNK17storeservicescore19StoreErrorCondition4whatEv(err->obj);
+            fprintf(stderr, "[!] auth error: code=%d, message=%s\n", code, what ? what : "none");
+        } else {
+            fprintf(stderr, "[!] auth failed: response type %d\n", respType);
+        }
+    }
     return respType == 6;
     // struct shared_ptr subStatMgr;
     // _ZN20androidstoreservices30SVSubscriptionStatusMgrFactory6createEv(&subStatMgr);
@@ -923,7 +937,10 @@ char *get_music_user_token(char *guid, char *authToken, struct shared_ptr reqCtx
     _ZN17storeservicescore10URLRequest3runEv(urlRequest);
     struct shared_ptr *err = _ZNK17storeservicescore10URLRequest5errorEv(urlRequest);
     if (err->obj != NULL) {
-        return "";
+        int code = _ZNK17storeservicescore19StoreErrorCondition9errorCodeEv(err->obj);
+        const char *what = _ZNK17storeservicescore19StoreErrorCondition4whatEv(err->obj);
+        fprintf(stderr, "[!] createMusicToken error: code=%d, message=%s\n", code, what ? what : "none");
+        return NULL;
     }
     struct shared_ptr *urlResp = _ZNK17storeservicescore10URLRequest8responseEv(urlRequest);
     struct shared_ptr *resp = _ZNK17storeservicescore11URLResponse18underlyingResponseEv(urlResp->obj);
@@ -934,6 +951,14 @@ char *get_music_user_token(char *guid, char *authToken, struct shared_ptr reqCtx
     cJSON *json = cJSON_Parse(respBody);
     cJSON *token_obj = cJSON_GetObjectItemCaseSensitive(json, "music_token");
     char *token = cJSON_GetStringValue(token_obj);
+    if (token == NULL) {
+        const char *err_desc = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(json, "error_description"));
+        const char *err_code = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(json, "error"));
+        fprintf(stderr, "[!] createMusicToken failed: %s (%s)\n",
+                err_desc ? err_desc : "unknown error",
+                err_code ? err_code : "?");
+        return NULL;
+    }
     char *result = strdup(token);
     return result;
 }
@@ -959,7 +984,10 @@ char* get_dev_token(struct shared_ptr reqCtx) {
     _ZN17storeservicescore10URLRequest3runEv(urlRequest);
     struct shared_ptr *err = _ZNK17storeservicescore10URLRequest5errorEv(urlRequest);
     if (err->obj != NULL) {
-        return "";
+        int code = _ZNK17storeservicescore19StoreErrorCondition9errorCodeEv(err->obj);
+        const char *what = _ZNK17storeservicescore19StoreErrorCondition4whatEv(err->obj);
+        fprintf(stderr, "[!] devToken error: code=%d, message=%s\n", code, what ? what : "none");
+        return NULL;
     }
     struct shared_ptr *urlResp = _ZNK17storeservicescore10URLRequest8responseEv(urlRequest);
     struct shared_ptr *resp = _ZNK17storeservicescore11URLResponse18underlyingResponseEv(urlResp->obj);
@@ -970,6 +998,10 @@ char* get_dev_token(struct shared_ptr reqCtx) {
     cJSON *json = cJSON_Parse(respBody);
     cJSON *token_obj = cJSON_GetObjectItemCaseSensitive(json, "token");
     char *token = cJSON_GetStringValue(token_obj);
+    if (token == NULL) {
+        fprintf(stderr, "[!] devToken error: token field missing in response\n");
+        return NULL;
+    }
     char *result = strdup(token);
     return result;
 }
@@ -1046,8 +1078,20 @@ int main(int argc, char *argv[]) {
 
     // Cache account info
     g_storefront_id = get_account_storefront_id(reqCtx);
+    if (g_storefront_id == NULL) {
+        fprintf(stderr, "[!] failed to get storefront ID\n");
+        return EXIT_FAILURE;
+    }
     g_dev_token = get_dev_token(reqCtx);
+    if (g_dev_token == NULL) {
+        fprintf(stderr, "[!] failed to get dev token\n");
+        return EXIT_FAILURE;
+    }
     g_music_token = get_music_user_token(get_guid(), g_dev_token, reqCtx);
+    if (g_music_token == NULL) {
+        fprintf(stderr, "[!] failed to get music token\n");
+        return EXIT_FAILURE;
+    }
     fprintf(stderr, "[+] account info cached successfully\n");
 
     write_storefront_id();
