@@ -19,13 +19,13 @@ Available for x86_64 and arm64. Need to download prebuilt version from releases 
 1. Build image:
 
 ```
-docker build --tag wrapper .
+docker build --tag ghcr.io/worldobservationlog/wrapper:local .
 ```
 
 2. Login:
 
 ```
-docker run --privileged --rm -it -v ./rootfs/data:/app/rootfs/data --entrypoint ./wrapper wrapper -L "username:password" -H 0.0.0.0
+docker run --privileged --rm -it -v ./rootfs/data:/app/rootfs/data --entrypoint ./wrapper ghcr.io/worldobservationlog/wrapper:local -L "username:password" -H 0.0.0.0
 ```
 
 Quit after this (using Ctrl-C).
@@ -33,7 +33,7 @@ Quit after this (using Ctrl-C).
 3. Run:
 
 ```
-docker run --privileged -v ./rootfs/data:/app/rootfs/data -p 10020:10020 -p 20020:20020 -p 30020:30020 -e args="-H 0.0.0.0" wrapper
+docker run --privileged -v ./rootfs/data:/app/rootfs/data -p 10020:10020 -p 20020:20020 -p 30020:30020 -e args="-H 0.0.0.0" ghcr.io/worldobservationlog/wrapper:local
 ```
 
 
