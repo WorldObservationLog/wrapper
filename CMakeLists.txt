@@ -54,7 +54,7 @@ target_link_libraries(main PRIVATE cjson)
 target_link_libraries(main PRIVATE dobby)
 
 set_target_properties(main PROPERTIES 
-    # COMPILE_DEFINITIONS "MyRelease"
+    COMPILE_DEFINITIONS "MyRelease"
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/rootfs/system/bin"
 )
 
