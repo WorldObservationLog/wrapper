@@ -71,11 +71,12 @@ target_link_libraries(main PRIVATE
     ${ANDROIDAPPMUSIC_LIB}
     ${STORESERVICESCORE_LIB}
     ${MEDIAPLATFORM_LIB}
+    ${LOG_SHARED_LIB}
 )
 
 get_target_property(MAIN_COMPILE_DEFINITIONS main COMPILE_DEFINITIONS)
 if(NOT "MyRelease" IN_LIST MAIN_COMPILE_DEFINITIONS)
-    target_link_libraries(main PRIVATE ${LOG_SHARED_LIB} ${CURL_SHARED_LIB})
+    target_link_libraries(main PRIVATE ${CURL_SHARED_LIB})
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Werror -g")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Werror -g")
 else()
