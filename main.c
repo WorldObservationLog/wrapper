@@ -12,6 +12,7 @@
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 
 #include "import.h"
 #include "cmdline.h"
@@ -30,9 +31,17 @@ int decryptCount = 1000;
 int offlineFlag;
 char *device_infos[9];
 
-static char *g_storefront_id = NULL;
-static char *g_dev_token = NULL;
-static char *g_music_token = NULL;
+#define ACCOUNT_REFRESH_INTERVAL_SECONDS (30 * 60)
+#define ACCOUNT_REFRESH_RETRY_SECONDS 60
+#define STOREFRONT_ID_FILE "STOREFRONT_ID"
+#define DEV_TOKEN_FILE "DEV_TOKEN"
+#define MUSIC_TOKEN_FILE "MUSIC_TOKEN"
+
+static pthread_mutex_t g_account_state_lock = PTHREAD_MUTEX_INITIALIZER;
+static char g_empty_account_value[] = "";
+static char *g_storefront_id = g_empty_account_value;
+static char *g_dev_token = g_empty_account_value;
+static char *g_music_token = g_empty_account_value;
 
 #ifndef MyRelease
 static int (*orig_debug_log_enabled)(void);
@@ -117,6 +126,167 @@ char *strcat_b(char *dest, char* src) {
     return result;
 }
 
+static int has_value(const char *value) {
+    return value != NULL && value[0] != '\0';
+}
+
+static void build_account_cache_path(char *buffer, size_t size, const char *file_name) {
+    snprintf(buffer, size, "%s/%s", args_info.base_dir_arg, file_name);
+}
+
+static char *read_trimmed_file(const char *path) {
+    FILE *fp = fopen(path, "r");
+    if (fp == NULL) {
+        return NULL;
+    }
+
+    if (fseek(fp, 0, SEEK_END) != 0) {
+        fclose(fp);
+        return NULL;
+    }
+
+    long size = ftell(fp);
+    if (size <= 0) {
+        fclose(fp);
+        return NULL;
+    }
+
+    rewind(fp);
+    char *value = malloc((size_t)size + 1);
+    if (value == NULL) {
+        fclose(fp);
+        return NULL;
+    }
+
+    size_t bytes_read = fread(value, 1, (size_t)size, fp);
+    fclose(fp);
+    value[bytes_read] = '\0';
+
+    while (bytes_read > 0 &&
+           (value[bytes_read - 1] == '\n' || value[bytes_read - 1] == '\r' ||
+            value[bytes_read - 1] == ' ' || value[bytes_read - 1] == '\t')) {
+        value[--bytes_read] = '\0';
+    }
+
+    if (!has_value(value)) {
+        free(value);
+        return NULL;
+    }
+
+    return value;
+}
+
+static char *read_account_cache_value(const char *file_name) {
+    char path[4096];
+    build_account_cache_path(path, sizeof(path), file_name);
+    return read_trimmed_file(path);
+}
+
+static int write_account_cache_value(const char *file_name, const char *value) {
+    if (!has_value(value)) {
+        return 0;
+    }
+
+    char path[4096];
+    build_account_cache_path(path, sizeof(path), file_name);
+    FILE *fp = fopen(path, "w");
+    if (fp == NULL) {
+        fprintf(stderr, "[!] failed to open %s for writing: %s\n", path, strerror(errno));
+        return 0;
+    }
+
+    int ok = fprintf(fp, "%s", value) >= 0;
+    if (fclose(fp) != 0) {
+        ok = 0;
+    }
+    if (!ok) {
+        fprintf(stderr, "[!] failed to write %s: %s\n", path, strerror(errno));
+    }
+    return ok;
+}
+
+static void replace_account_value_locked(char **slot, char *value) {
+    if (!has_value(value)) {
+        return;
+    }
+
+    char *old = *slot;
+    *slot = value;
+    if (old != g_empty_account_value) {
+        free(old);
+    }
+}
+
+static char *snapshot_account_value(char **slot) {
+    pthread_mutex_lock(&g_account_state_lock);
+    char *snapshot = has_value(*slot) ? strdup(*slot) : NULL;
+    pthread_mutex_unlock(&g_account_state_lock);
+    return snapshot;
+}
+
+static int account_info_available(void) {
+    pthread_mutex_lock(&g_account_state_lock);
+    int available = has_value(g_storefront_id) &&
+                    has_value(g_dev_token) &&
+                    has_value(g_music_token);
+    pthread_mutex_unlock(&g_account_state_lock);
+    return available;
+}
+
+static int load_account_cache(void) {
+    char *storefront_id = read_account_cache_value(STOREFRONT_ID_FILE);
+    char *dev_token = read_account_cache_value(DEV_TOKEN_FILE);
+    char *music_token = read_account_cache_value(MUSIC_TOKEN_FILE);
+    int loaded = 0;
+
+    pthread_mutex_lock(&g_account_state_lock);
+    if (storefront_id != NULL) {
+        replace_account_value_locked(&g_storefront_id, storefront_id);
+        loaded = 1;
+        storefront_id = NULL;
+    }
+    if (dev_token != NULL) {
+        replace_account_value_locked(&g_dev_token, dev_token);
+        loaded = 1;
+        dev_token = NULL;
+    }
+    if (music_token != NULL) {
+        replace_account_value_locked(&g_music_token, music_token);
+        loaded = 1;
+        music_token = NULL;
+    }
+    pthread_mutex_unlock(&g_account_state_lock);
+
+    free(storefront_id);
+    free(dev_token);
+    free(music_token);
+
+    if (loaded) {
+        fprintf(stderr, "[+] loaded cached account info\n");
+    }
+    return loaded;
+}
+
+static void persist_account_cache(void) {
+    char *storefront_id = snapshot_account_value(&g_storefront_id);
+    char *dev_token = snapshot_account_value(&g_dev_token);
+    char *music_token = snapshot_account_value(&g_music_token);
+
+    if (write_account_cache_value(STOREFRONT_ID_FILE, storefront_id)) {
+        fprintf(stderr, "[+] StoreFront ID: %s\n", storefront_id);
+    }
+    if (write_account_cache_value(DEV_TOKEN_FILE, dev_token)) {
+        fprintf(stderr, "[+] Dev-Token: %.14s...\n", dev_token);
+    }
+    if (write_account_cache_value(MUSIC_TOKEN_FILE, music_token)) {
+        fprintf(stderr, "[+] Music-Token: %.14s...\n", music_token);
+    }
+
+    free(storefront_id);
+    free(dev_token);
+    free(music_token);
+}
+
 int split_string_safe(const char *str, const char *delim, char **components, 
                       int max_components, char **out_copy_to_free) 
 {
@@ -198,9 +368,14 @@ static void credentialHandler(struct shared_ptr *credReqHandler,
             credReqHandler->obj)),
         need2FA ? "true" : "false");
 
-    int passLen = strlen(amPassword);
+    int credentials_available = has_value(amUsername) && has_value(amPassword);
+    if (!credentials_available) {
+        fprintf(stderr, "[!] credentials requested but login credentials are unavailable. Login will fail this time.\n");
+    }
 
-    if (need2FA) {
+    int passLen = credentials_available ? strlen(amPassword) : 0;
+
+    if (need2FA && credentials_available) {
         if (args_info.code_from_file_flag) {
             fprintf(stderr, "[!] Enter your 2FA code into rootfs/%s/2fa.txt\n", args_info.base_dir_arg);
             fprintf(stderr, "[!] Example command: echo -n 114514 > rootfs/%s/2fa.txt\n", args_info.base_dir_arg);
@@ -209,8 +384,8 @@ static void credentialHandler(struct shared_ptr *credReqHandler,
             while (1)
             {
                 if (count >= 20) {
-                    fprintf(stderr, "[!] Failed to get 2FA Code in 60s. Exiting...\n");
-                    exit(0);
+                    fprintf(stderr, "[!] Failed to get 2FA Code in 60s. Login will fail this time.\n");
+                    break;
                 }
                 char *path = strcat_b(args_info.base_dir_arg, "/2fa.txt");
                 if (file_exists(path)) {
@@ -225,9 +400,15 @@ static void credentialHandler(struct shared_ptr *credReqHandler,
                 }
             }
         } else {
-            printf("2FA code: ");
-            scanf("%6s", amPassword + passLen);
+            if (isatty(STDIN_FILENO)) {
+                printf("2FA code: ");
+                scanf("%6s", amPassword + passLen);
+            } else {
+                fprintf(stderr, "[!] 2FA code requested but stdin is not interactive. Login will fail this time.\n");
+            }
         }
+    } else if (need2FA) {
+        fprintf(stderr, "[!] 2FA code requested but credentials are unavailable. Login will fail this time.\n");
     }
 
     uint8_t *const ptr = malloc(80);
@@ -238,11 +419,11 @@ static void credentialHandler(struct shared_ptr *credReqHandler,
     struct shared_ptr credResp = {.obj = ptr + 24, .ctrl_blk = ptr};
     _ZN17storeservicescore19CredentialsResponseC1Ev(credResp.obj);
 
-    union std_string username = new_std_string(amUsername);
+    union std_string username = new_std_string(credentials_available ? amUsername : "");
     _ZN17storeservicescore19CredentialsResponse11setUserNameERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(
         credResp.obj, &username);
 
-    union std_string password = new_std_string(amPassword);
+    union std_string password = new_std_string(credentials_available ? amPassword : "");
     _ZN17storeservicescore19CredentialsResponse11setPasswordERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(
         credResp.obj, &password);
 
@@ -366,12 +547,6 @@ extern void *pbErrCallback;
 
 inline static uint8_t login(struct shared_ptr reqCtx) {
     fprintf(stderr, "[+] logging in...\n");
-    if (file_exists(strcat_b(args_info.base_dir_arg, "/STOREFRONT_ID"))) {
-        remove(strcat_b(args_info.base_dir_arg, "/STOREFRONT_ID"));
-    }
-    if (file_exists(strcat_b(args_info.base_dir_arg, "/MUSIC_TOKEN"))) {
-        remove(strcat_b(args_info.base_dir_arg, "/MUSIC_TOKEN"));
-    }
     struct shared_ptr flow;
     _ZNSt6__ndk110shared_ptrIN17storeservicescore16AuthenticateFlowEE11make_sharedIJRNS0_INS1_14RequestContextEEEEEES3_DpOT_(
         &flow, &reqCtx);
@@ -775,19 +950,29 @@ void handle_account(const int connfd)
         return;
     }
 
+    char *storefront_snapshot = snapshot_account_value(&g_storefront_id);
+    char *dev_token_snapshot = snapshot_account_value(&g_dev_token);
+    char *music_token_snapshot = snapshot_account_value(&g_music_token);
+    const char *storefront_id = storefront_snapshot ? storefront_snapshot : "";
+    const char *dev_token = dev_token_snapshot ? dev_token_snapshot : "";
+    const char *music_token = music_token_snapshot ? music_token_snapshot : "";
+
     // Format JSON response body
-    size_t json_size = 1024;
+    size_t json_size = strlen(storefront_id) + strlen(dev_token) + strlen(music_token) + 80;
     char *json_body = (char *)malloc(json_size);
     if (json_body == NULL)
     {
         fprintf(stderr, "[.] failed to allocate memory for account response\n");
+        free(storefront_snapshot);
+        free(dev_token_snapshot);
+        free(music_token_snapshot);
         const char *error_response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\nContent-Length: 0\r\n\r\n";
         writefull(connfd, (void *)error_response, strlen(error_response));
         return;
     }
 
     snprintf(json_body, json_size, "{\"storefront_id\":\"%s\",\"dev_token\":\"%s\",\"music_token\":\"%s\"}",
-             g_storefront_id, g_dev_token, g_music_token);
+             storefront_id, dev_token, music_token);
 
     int json_len = strlen(json_body);
 
@@ -798,6 +983,9 @@ void handle_account(const int connfd)
     {
         fprintf(stderr, "[.] failed to allocate memory for HTTP response\n");
         free(json_body);
+        free(storefront_snapshot);
+        free(dev_token_snapshot);
+        free(music_token_snapshot);
         const char *error_response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\nContent-Length: 0\r\n\r\n";
         writefull(connfd, (void *)error_response, strlen(error_response));
         return;
@@ -806,12 +994,15 @@ void handle_account(const int connfd)
     snprintf(http_response, response_size, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: %d\r\nConnection: close\r\n\r\n",
              json_len);
 
-    fprintf(stderr, "[.] returning account info, storefront: %s\n", g_storefront_id);
+    fprintf(stderr, "[.] returning account info, storefront: %s\n", storefront_id);
     writefull(connfd, http_response, strlen(http_response));
     writefull(connfd, json_body, json_len);
 
     free(http_response);
     free(json_body);
+    free(storefront_snapshot);
+    free(dev_token_snapshot);
+    free(music_token_snapshot);
 }
 
 static inline void *new_socket_account(void *args)
@@ -881,10 +1072,11 @@ char* get_account_storefront_id(struct shared_ptr reqCtx) {
 }
 
 void write_storefront_id(void) {
-    FILE *fp = fopen(strcat_b(args_info.base_dir_arg, "/STOREFRONT_ID"), "w");
-    fprintf(stderr, "[+] StoreFront ID: %s\n", g_storefront_id);
-    fprintf(fp, "%s", g_storefront_id);
-    fclose(fp);
+    char *storefront_id = snapshot_account_value(&g_storefront_id);
+    if (write_account_cache_value(STOREFRONT_ID_FILE, storefront_id)) {
+        fprintf(stderr, "[+] StoreFront ID: %s\n", storefront_id);
+    }
+    free(storefront_id);
 }
 
 char *get_guid() {
@@ -925,7 +1117,7 @@ char *get_music_user_token(char *guid, char *authToken, struct shared_ptr reqCtx
     size_t body_size = 512;
     char *body = (char *)malloc(body_size);
     if (body == NULL) {
-        return "";
+        return NULL;
     }
 
     snprintf(body, body_size, "{\"guid\":\"%s\",\"assertion\":\"%s\",\"tcc-acceptance-date\":\"%lld\"}", guid, authToken, getCurrentTimeMillis());
@@ -936,19 +1128,39 @@ char *get_music_user_token(char *guid, char *authToken, struct shared_ptr reqCtx
     _ZN17storeservicescore10URLRequestC2ERKNSt6__ndk110shared_ptrIN13mediaplatform11HTTPMessageEEERKNS2_INS_14RequestContextEEE(urlRequest, &httpMessage, &reqCtx);
     _ZN17storeservicescore10URLRequest3runEv(urlRequest);
     struct shared_ptr *err = _ZNK17storeservicescore10URLRequest5errorEv(urlRequest);
-    if (err->obj != NULL) {
+    if (err != NULL && err->obj != NULL) {
         int code = _ZNK17storeservicescore19StoreErrorCondition9errorCodeEv(err->obj);
         const char *what = _ZNK17storeservicescore19StoreErrorCondition4whatEv(err->obj);
         fprintf(stderr, "[!] createMusicToken error: code=%d, message=%s\n", code, what ? what : "none");
         return NULL;
     }
     struct shared_ptr *urlResp = _ZNK17storeservicescore10URLRequest8responseEv(urlRequest);
+    if (urlResp == NULL || urlResp->obj == NULL) {
+        fprintf(stderr, "[!] createMusicToken failed: missing response\n");
+        return NULL;
+    }
     struct shared_ptr *resp = _ZNK17storeservicescore11URLResponse18underlyingResponseEv(urlResp->obj);
+    if (resp == NULL || resp->obj == NULL) {
+        fprintf(stderr, "[!] createMusicToken failed: missing underlying response\n");
+        return NULL;
+    }
     void *http_message_obj = resp->obj;
     void** data_ptr_location = (void**)((char*)http_message_obj + 48);
     void* data_ptr = *data_ptr_location;
+    if (data_ptr == NULL) {
+        fprintf(stderr, "[!] createMusicToken failed: empty response body\n");
+        return NULL;
+    }
     char *respBody = _ZNK13mediaplatform4Data5bytesEv(data_ptr);
+    if (respBody == NULL) {
+        fprintf(stderr, "[!] createMusicToken failed: empty response body\n");
+        return NULL;
+    }
     cJSON *json = cJSON_Parse(respBody);
+    if (json == NULL) {
+        fprintf(stderr, "[!] createMusicToken failed: invalid JSON response\n");
+        return NULL;
+    }
     cJSON *token_obj = cJSON_GetObjectItemCaseSensitive(json, "music_token");
     char *token = cJSON_GetStringValue(token_obj);
     if (token == NULL) {
@@ -957,9 +1169,11 @@ char *get_music_user_token(char *guid, char *authToken, struct shared_ptr reqCtx
         fprintf(stderr, "[!] createMusicToken failed: %s (%s)\n",
                 err_desc ? err_desc : "unknown error",
                 err_code ? err_code : "?");
+        cJSON_Delete(json);
         return NULL;
     }
     char *result = strdup(token);
+    cJSON_Delete(json);
     return result;
 }
 
@@ -983,53 +1197,129 @@ char* get_dev_token(struct shared_ptr reqCtx) {
     _ZN17storeservicescore10URLRequest19setRequestParameterERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEES9_(urlRequest, &versionName, &versionValue);
     _ZN17storeservicescore10URLRequest3runEv(urlRequest);
     struct shared_ptr *err = _ZNK17storeservicescore10URLRequest5errorEv(urlRequest);
-    if (err->obj != NULL) {
+    if (err != NULL && err->obj != NULL) {
         int code = _ZNK17storeservicescore19StoreErrorCondition9errorCodeEv(err->obj);
         const char *what = _ZNK17storeservicescore19StoreErrorCondition4whatEv(err->obj);
         fprintf(stderr, "[!] devToken error: code=%d, message=%s\n", code, what ? what : "none");
         return NULL;
     }
     struct shared_ptr *urlResp = _ZNK17storeservicescore10URLRequest8responseEv(urlRequest);
+    if (urlResp == NULL || urlResp->obj == NULL) {
+        fprintf(stderr, "[!] devToken error: missing response\n");
+        return NULL;
+    }
     struct shared_ptr *resp = _ZNK17storeservicescore11URLResponse18underlyingResponseEv(urlResp->obj);
+    if (resp == NULL || resp->obj == NULL) {
+        fprintf(stderr, "[!] devToken error: missing underlying response\n");
+        return NULL;
+    }
     void *http_message_obj = resp->obj;
     void** data_ptr_location = (void**)((char*)http_message_obj + 48);
     void* data_ptr = *data_ptr_location;
+    if (data_ptr == NULL) {
+        fprintf(stderr, "[!] devToken error: empty response body\n");
+        return NULL;
+    }
     char *respBody = _ZNK13mediaplatform4Data5bytesEv(data_ptr);
+    if (respBody == NULL) {
+        fprintf(stderr, "[!] devToken error: empty response body\n");
+        return NULL;
+    }
     cJSON *json = cJSON_Parse(respBody);
+    if (json == NULL) {
+        fprintf(stderr, "[!] devToken error: invalid JSON response\n");
+        return NULL;
+    }
     cJSON *token_obj = cJSON_GetObjectItemCaseSensitive(json, "token");
     char *token = cJSON_GetStringValue(token_obj);
     if (token == NULL) {
         fprintf(stderr, "[!] devToken error: token field missing in response\n");
+        cJSON_Delete(json);
         return NULL;
     }
     char *result = strdup(token);
+    cJSON_Delete(json);
     return result;
 }
 
 void write_music_token(void) {
-    int token_file_available = 0;
-    if (file_exists(strcat_b(args_info.base_dir_arg, "/MUSIC_TOKEN"))) {
-        FILE *fp = fopen(strcat_b(args_info.base_dir_arg, "/MUSIC_TOKEN"), "r");
-        if (NULL != fp) {
-            fseek (fp, 0, SEEK_END);
-            long size = ftell(fp);
+    char *music_token = snapshot_account_value(&g_music_token);
+    if (write_account_cache_value(MUSIC_TOKEN_FILE, music_token)) {
+        fprintf(stderr, "[+] Music-Token: %.14s...\n", music_token);
+    }
+    free(music_token);
+}
 
-            if (0 != size) {
-                token_file_available = 1;
-            }
+static int refresh_account_cache(struct shared_ptr reqCtx) {
+    char *storefront_id = get_account_storefront_id(reqCtx);
+    char *dev_token = get_dev_token(reqCtx);
+    char *dev_token_for_music = dev_token;
+    int dev_token_for_music_owned = 0;
+
+    if (!has_value(dev_token_for_music)) {
+        dev_token_for_music = snapshot_account_value(&g_dev_token);
+        dev_token_for_music_owned = 1;
+    }
+
+    char *music_token = NULL;
+    if (has_value(dev_token_for_music)) {
+        music_token = get_music_user_token(get_guid(), dev_token_for_music, reqCtx);
+    } else {
+        fprintf(stderr, "[!] cannot refresh music token: dev token unavailable\n");
+    }
+
+    int refreshed_tokens = has_value(dev_token) && has_value(music_token);
+    int updated = 0;
+    pthread_mutex_lock(&g_account_state_lock);
+    if (has_value(storefront_id)) {
+        replace_account_value_locked(&g_storefront_id, storefront_id);
+        storefront_id = NULL;
+        updated = 1;
+    }
+    if (has_value(dev_token)) {
+        replace_account_value_locked(&g_dev_token, dev_token);
+        dev_token = NULL;
+        updated = 1;
+    }
+    if (has_value(music_token)) {
+        replace_account_value_locked(&g_music_token, music_token);
+        music_token = NULL;
+        updated = 1;
+    }
+    pthread_mutex_unlock(&g_account_state_lock);
+
+    free(storefront_id);
+    free(dev_token);
+    free(music_token);
+    if (dev_token_for_music_owned) {
+        free(dev_token_for_music);
+    }
+
+    if (updated) {
+        persist_account_cache();
+        if (refreshed_tokens) {
+            fprintf(stderr, "[+] account info refreshed successfully\n");
+            return 1;
         }
+
+        fprintf(stderr, "[!] account info refresh incomplete; keeping cached values\n");
+        return 0;
     }
-    if (token_file_available) {
-        char token[256];
-        FILE *fp = fopen(strcat_b(args_info.base_dir_arg, "/MUSIC_TOKEN"), "r");
-        fgets(token, sizeof(token), fp);
-        fprintf(stderr, "[+] Music-Token: %.14s...\n", token);
-        return;
+
+    fprintf(stderr, "[!] account info refresh failed; keeping cached values\n");
+    return 0;
+}
+
+static void *account_refresh_loop(void *args) {
+    (void)args;
+    int delay = account_info_available() ? ACCOUNT_REFRESH_INTERVAL_SECONDS : ACCOUNT_REFRESH_RETRY_SECONDS;
+
+    while (1) {
+        sleep(delay);
+        delay = refresh_account_cache(reqCtx) ? ACCOUNT_REFRESH_INTERVAL_SECONDS : ACCOUNT_REFRESH_RETRY_SECONDS;
     }
-    FILE *fp = fopen(strcat_b(args_info.base_dir_arg, "/MUSIC_TOKEN"), "w");
-    fprintf(stderr, "[+] Music-Token: %.14s...\n", g_music_token);
-    fprintf(fp, "%s", g_music_token);
-    fclose(fp);
+
+    return NULL;
 }
 
 int offline_available() {
@@ -1056,13 +1346,17 @@ int main(int argc, char *argv[]) {
 
     init();
     reqCtx = init_ctx();
+    load_account_cache();
     if (args_info.login_given) {
         amUsername = strtok(args_info.login_arg, ":");
         amPassword = strtok(NULL, ":");
     }
+    if (args_info.login_given && (!has_value(amUsername) || !has_value(amPassword))) {
+        fprintf(stderr, "[!] invalid login format, expected username:password; continuing without login\n");
+        args_info.login_given = 0;
+    }
     if (args_info.login_given && !login(reqCtx)) {
-        fprintf(stderr, "[!] login failed\n");
-        return EXIT_FAILURE;
+        fprintf(stderr, "[!] login failed; continuing with cached session/token data\n");
     }
     _ZN22SVPlaybackLeaseManagerC2ERKNSt6__ndk18functionIFvRKiEEERKNS1_IFvRKNS0_10shared_ptrIN17storeservicescore19StoreErrorConditionEEEEEE(
         leaseMgr, &endLeaseCallback, &pbErrCallback);
@@ -1076,26 +1370,15 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "[+] This account supports offline channel\n");
     }
 
-    // Cache account info
-    g_storefront_id = get_account_storefront_id(reqCtx);
-    if (g_storefront_id == NULL) {
-        fprintf(stderr, "[!] failed to get storefront ID\n");
-        return EXIT_FAILURE;
+    if (!refresh_account_cache(reqCtx) && !account_info_available()) {
+        fprintf(stderr, "[!] account info unavailable; service will retry in the background\n");
+    } else {
+        fprintf(stderr, "[+] account info ready\n");
     }
-    g_dev_token = get_dev_token(reqCtx);
-    if (g_dev_token == NULL) {
-        fprintf(stderr, "[!] failed to get dev token\n");
-        return EXIT_FAILURE;
-    }
-    g_music_token = get_music_user_token(get_guid(), g_dev_token, reqCtx);
-    if (g_music_token == NULL) {
-        fprintf(stderr, "[!] failed to get music token\n");
-        return EXIT_FAILURE;
-    }
-    fprintf(stderr, "[+] account info cached successfully\n");
 
-    write_storefront_id();
-    write_music_token();
+    pthread_t refresh_thread;
+    pthread_create(&refresh_thread, NULL, &account_refresh_loop, NULL);
+    pthread_detach(refresh_thread);
 
     pthread_t m3u8_thread;
     pthread_create(&m3u8_thread, NULL, &new_socket_m3u8, NULL);

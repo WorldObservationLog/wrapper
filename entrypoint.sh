@@ -18,7 +18,7 @@ if [ ! -f "$TOKEN_DB_PATH" ]; then
     exit 1
   fi
   exec ./wrapper \
-    -L ${USERNAME}:${PASSWORD} \
+    -L "${USERNAME}:${PASSWORD}" \
     -F \
     -H 0.0.0.0 \
     "$@"
