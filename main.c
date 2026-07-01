@@ -34,6 +34,11 @@ static char *g_storefront_id = NULL;
 static char *g_dev_token = NULL;
 static char *g_music_token = NULL;
 
+/* Protects preshareCtx against concurrent access from the main decrypt
+ * thread (handle/getKdContext) and the recovery worker (refresh_decrypt_ctx).
+ * Using PTHREAD_MUTEX_INITIALIZER avoids the need for an explicit init call. */
+static pthread_mutex_t g_ctx_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 #ifndef MyRelease
 static int (*orig_debug_log_enabled)(void);
 static int (*orig_android_log_print)(int prio, const char *tag, const char *fmt, ...);
@@ -363,6 +368,10 @@ static inline struct shared_ptr init_ctx() {
 
 extern void *endLeaseCallback;
 extern void *pbErrCallback;
+extern void  start_recovery_thread(void);
+extern int   is_recovery_active(void);
+/* Returns current RecoveryState as int: 0=Running 1=Scheduled 2=Refreshing 3=Failed */
+extern int   get_recovery_state(void);
 
 inline static uint8_t login(struct shared_ptr reqCtx) {
     fprintf(stderr, "[+] logging in...\n");
@@ -439,9 +448,19 @@ static void *preshareCtx = NULL;
 inline static void *getKdContext(const char *const adam,
                                  const char *const uri) {
     uint8_t isPreshare = (strcmp("0", adam) == 0);
-    if (isPreshare && preshareCtx != NULL) {
-        return preshareCtx;
+
+    /* Fast-path: return cached preshare context if available.
+     * Lock only long enough to read the pointer — the long FairPlay
+     * network operations below must NOT be performed under this lock,
+     * or the recovery worker would block all decryption during reacquisition. */
+    if (isPreshare) {
+        pthread_mutex_lock(&g_ctx_mutex);
+        void *cached = preshareCtx;
+        pthread_mutex_unlock(&g_ctx_mutex);
+        if (cached != NULL)
+            return cached;
     }
+
     fprintf(stderr, "[.] adamId: %s, uri: %s\n", adam, uri);
 
     union std_string defaultId = new_std_string(adam);
@@ -471,22 +490,61 @@ inline static void *getKdContext(const char *const adam,
 
     void *kdContext =
         *_ZNK18SVFootHillPContext9kdContextEv(SVFootHillPContext.obj);
-    if (kdContext != NULL && isPreshare)
+
+    /* Store result under lock so the recovery worker sees a consistent value
+     * if it concurrently resets preshareCtx to NULL. */
+    if (kdContext != NULL && isPreshare) {
+        pthread_mutex_lock(&g_ctx_mutex);
         preshareCtx = kdContext;
+        pthread_mutex_unlock(&g_ctx_mutex);
+    }
+
     return kdContext;
 }
 
-void refresh_decrypt_ctx() {
+void refresh_decrypt_ctx(void) {
     uint8_t autom = 1;
+
+    /* Request a new playback lease from Apple. */
     _ZN22SVPlaybackLeaseManager12requestLeaseERKb(leaseMgr, &autom);
+
+    /* Tear down all cached FairPlay key contexts so fresh keys are derived. */
     _ZN21SVFootHillSessionCtrl16resetAllContextsEv(FHinstance);
+
+    /* Invalidate the preshare cache under lock before rebuilding it.
+     * Any concurrent getKdContext() call will miss the cache and fall through
+     * to a full key derivation — correct behaviour during recovery. */
+    pthread_mutex_lock(&g_ctx_mutex);
     preshareCtx = NULL;
-    preshareCtx = getKdContext("0", "skd://itunes.apple.com/P000000000/s1/e1");
+    pthread_mutex_unlock(&g_ctx_mutex);
+
+    /* Rebuild the preshare context.  getKdContext() will write the new pointer
+     * under g_ctx_mutex internally. */
+    getKdContext("0", "skd://itunes.apple.com/P000000000/s1/e1");
+
     fprintf(stderr, "[!] refreshed context\n");
+}
+
+/* Called by the recovery worker to determine whether reacquisition produced
+ * a usable decrypt context.  Reads preshareCtx under g_ctx_mutex. */
+int is_preshare_ctx_ready(void) {
+    pthread_mutex_lock(&g_ctx_mutex);
+    int ready = (preshareCtx != NULL);
+    pthread_mutex_unlock(&g_ctx_mutex);
+    return ready;
 }
 
 void handle(const int connfd) {
     while (1) {
+        /* Fail fast during lease recovery: avoid queuing FairPlay key-
+         * delivery requests to Apple's servers while the recovery worker
+         * is already performing a refresh cycle.  The client receives an
+         * EOF/broken-pipe and should retry after a brief pause. */
+        if (is_recovery_active()) {
+            fprintf(stderr, "[.] decrypt request refused: lease recovery in progress\n");
+            return;
+        }
+
         uint8_t adamSize;
         if (!readfull(connfd, &adamSize, sizeof(uint8_t)))
             return;
@@ -692,6 +750,17 @@ void handle_m3u8(const int connfd) {
         char *ptr;
         unsigned long adamID = strtoul(adam, &ptr, 10);
         const char *m3u8;
+
+        /* During lease recovery the decrypt context is being rebuilt.
+         * Return an empty line (same as a failed asset request) so the
+         * client can detect the condition and retry rather than waiting
+         * on a network call that will fail anyway. */
+        if (is_recovery_active()) {
+            fprintf(stderr, "[.] m3u8 request refused: lease recovery in progress\n");
+            writefull(connfd, "\n", 1);
+            continue;
+        }
+
         if (offlineFlag) {
             m3u8 = get_m3u8_method_download(reqCtx, adamID);
         } else {
@@ -1070,6 +1139,11 @@ int main(int argc, char *argv[]) {
     _ZN22SVPlaybackLeaseManager25refreshLeaseAutomaticallyERKb(leaseMgr, &autom);
     _ZN22SVPlaybackLeaseManager12requestLeaseERKb(leaseMgr, &autom);
     FHinstance = _ZN21SVFootHillSessionCtrl8instanceEv();
+
+    /* Start the async recovery thread.  Must be started after leaseMgr and
+     * FHinstance are initialised so that refresh_decrypt_ctx() is safe to call
+     * from the worker at any point after this. */
+    start_recovery_thread();
 
     offlineFlag = offline_available();
     if (offlineFlag) {
