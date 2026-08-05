@@ -145,6 +145,8 @@ void run_proot_encapsulated(int argc, char *argv[]) {
     if (pid == 0) {
         // 子进程中设置环境变量，不影响父进程
         setenv("PROOT_TMP_DIR", tmp_dir, 1);
+        // Termux 的 LD_PRELOAD 在 Android guest 环境中无效，必须清除
+        unsetenv("LD_PRELOAD");
         if (execvp(proot_path, proot_argv) == -1) {
             perror("execvp proot failed");
             exit(EXIT_FAILURE);
