@@ -48,6 +48,32 @@ static int safe_mkdir(const char *path, mode_t mode) {
     return 0;
 }
 
+// 递归创建目录，类似 mkdir -p
+static int mkdir_p(const char *path, mode_t mode) {
+    char tmp[1024];
+    snprintf(tmp, sizeof(tmp), "%s", path);
+    size_t len = strlen(tmp);
+    if (tmp[len - 1] == '/') {
+        tmp[len - 1] = '\0';
+    }
+
+    for (char *p = tmp + 1; *p; p++) {
+        if (*p == '/') {
+            *p = '\0';
+            if (mkdir(tmp, mode) != 0 && errno != EEXIST) {
+                fprintf(stderr, "[-] mkdir_p %s failed: %s\n", tmp, strerror(errno));
+                return -1;
+            }
+            *p = '/';
+        }
+    }
+    if (mkdir(tmp, mode) != 0 && errno != EEXIST) {
+        fprintf(stderr, "[-] mkdir_p %s failed: %s\n", tmp, strerror(errno));
+        return -1;
+    }
+    return 0;
+}
+
 void run_proot_encapsulated(int argc, char *argv[]) {
     char *proot_path = "./android/proot";
 
@@ -68,12 +94,15 @@ void run_proot_encapsulated(int argc, char *argv[]) {
     if (safe_mkdir("rootfs/system", 0755) != 0) exit(EXIT_FAILURE);
     if (safe_mkdir("rootfs/system/lib64", 0755) != 0) exit(EXIT_FAILURE);
 
-    // 创建数据目录（与 wrapper.c 行为一致）
-    if (safe_mkdir(args_info.base_dir_arg, 0777) != 0) exit(EXIT_FAILURE);
+    // 创建数据目录（加上 rootfs 前缀，因为此时尚未进入 PRoot，
+    // PRoot -r rootfs/ 会将 guest / 映射到宿主机 rootfs/）
+    char base_dir_host[1024];
+    snprintf(base_dir_host, sizeof(base_dir_host), "rootfs%s", args_info.base_dir_arg);
+    if (mkdir_p(base_dir_host, 0777) != 0) exit(EXIT_FAILURE);
 
     char db_dir[1024];
-    snprintf(db_dir, sizeof(db_dir), "%s/mpl_db", args_info.base_dir_arg);
-    if (safe_mkdir(db_dir, 0777) != 0) exit(EXIT_FAILURE);
+    snprintf(db_dir, sizeof(db_dir), "rootfs%s/mpl_db", args_info.base_dir_arg);
+    if (mkdir_p(db_dir, 0777) != 0) exit(EXIT_FAILURE);
 
     // 动态构建 proot argv：固定选项 + 目标二进制 + 用户参数
     // 固定参数共 14 个 (proot, -r, rootfs/, -b, /dev:/dev, -b, /proc:/proc, -b, /sys:/sys,
