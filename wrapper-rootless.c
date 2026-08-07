@@ -1,16 +1,17 @@
+/* canonical implementation: wrapper.c — this file may only differ where rootless operation requires it */
 #define _GNU_SOURCE
+
 #include <errno.h>
+#include <fcntl.h>
 #include <sched.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <sys/stat.h>
 #include <sys/sysmacros.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-#include <sys/mount.h>
 #include <unistd.h>
 #include <string.h>
-#include <fcntl.h>
+#include <sys/mount.h>
 
 #include "cmdline.h"
 
@@ -23,6 +24,7 @@ static void intHan(int signum) {
     }
 }
 
+/* rootless-only: write a single line to a /proc file */
 static int write_file(const char *path, const char *line) {
     int fd = open(path, O_WRONLY);
     if (fd < 0) return -1;
@@ -32,13 +34,23 @@ static int write_file(const char *path, const char *line) {
     return (ret == len) ? 0 : -1;
 }
 
-static int setup_unprivileged_namespaces() {
+/* rootless-only: create user+mount namespace and map current uid/gid to root */
+static int setup_user_namespace() {
     uid_t uid = getuid();
     gid_t gid = getgid();
     char buf[128];
 
-    if (unshare(CLONE_NEWUSER | CLONE_NEWNS | CLONE_NEWPID) == -1) {
-        perror("unshare");
+    if (unshare(CLONE_NEWUSER | CLONE_NEWNS) == -1) {
+        if (errno == EPERM) {
+            fprintf(stderr,
+                "error: unprivileged user namespaces are not permitted on this system.\n"
+                "  options:\n"
+                "    1. enable:  sudo sysctl -w kernel.unprivileged_userns_clone=1\n"
+                "    2. use the privileged wrapper instead\n"
+                "    3. grant capabilities: sudo setcap cap_sys_admin+ep ./wrapper-rootless\n");
+        } else {
+            perror("unshare");
+        }
         return -1;
     }
 
@@ -69,19 +81,9 @@ int main(int argc, char *argv[], char *envp[]) {
         return 1;
     }
 
-    if (setup_unprivileged_namespaces() != 0) {
+    /* rootless-only: establish user namespace before any privileged operations */
+    if (setup_user_namespace() != 0) {
         return 1;
-    }
-
-    child_proc = fork();
-    if (child_proc == -1) {
-        perror("fork");
-        return 1;
-    }
-
-    if (child_proc > 0) {
-        wait(NULL);
-        return 0;
     }
 
     if (mkdir("./rootfs/dev", 0755) != 0 && errno != EEXIST) {
@@ -101,41 +103,57 @@ int main(int argc, char *argv[], char *envp[]) {
         return 1;
     }
 
-    if (mkdir("./rootfs/proc", 0755) != 0 && errno != EEXIST) {
-        perror("mkdir ./rootfs/proc failed");
-        return 1;
-    }
-
-    if (mount("proc", "./rootfs/proc", "proc", 0, NULL) != 0) {
-        perror("mount proc failed");
-        return 1;
-    }
-
-    // 5. 切换目录并 chroot
     if (chdir("./rootfs") != 0) {
-        perror("chdir ./rootfs failed");
+        perror("chdir");
         return 1;
     }
-    if (chroot(".") != 0) {
-        perror("chroot . failed");
+    if (chroot("./") != 0) {
+        perror("chroot");
+        return 1;
+    }
+
+    if (mkdir("/proc", 0755) != 0 && errno != EEXIST) {
+        perror("mkdir /proc failed");
         return 1;
     }
 
     chmod("/system/bin/linker64", 0755);
     chmod("/system/bin/main", 0755);
 
+    /* rootless-only: user namespace guarantees CLONE_NEWPID is always available */
+    if (unshare(CLONE_NEWPID)) {
+        perror("unshare");
+        return 1;
+    }
+
+    child_proc = fork();
+    if (child_proc == -1) {
+        perror("fork");
+        return 1;
+    }
+
+    if (child_proc > 0) {
+        wait(NULL);
+        return 0;
+    }
+
+    if (mount("proc", "/proc", "proc", 0, NULL) != 0) {
+        perror("mount proc failed");
+        return 1;
+    }
+
     if (mkdir(args_info.base_dir_arg, 0777) != 0 && errno != EEXIST) {
         perror("mkdir base_dir_arg failed");
-    } 
-    
-    char db_path[512];
-    snprintf(db_path, sizeof(db_path), "%s/mpl_db", args_info.base_dir_arg);
-    if (mkdir(db_path, 0777) != 0 && errno != EEXIST) {
+    }
+
+    char db_dir[1024];
+    snprintf(db_dir, sizeof(db_dir), "%s/mpl_db", args_info.base_dir_arg);
+    if (mkdir(db_dir, 0777) != 0 && errno != EEXIST) {
         perror("mkdir mpl_db failed");
     }
 
     execve("/system/bin/main", argv, envp);
-    
+
     perror("execve");
     return 1;
 }

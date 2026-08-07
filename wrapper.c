@@ -1,3 +1,4 @@
+/* canonical implementation — any change here must be reviewed against wrapper-rootless.c */
 #define _GNU_SOURCE
 
 #include <errno.h>
@@ -129,7 +130,7 @@ int main(int argc, char *argv[], char *envp[]) {
     if (mkdir(args_info.base_dir_arg, 0777) != 0 && errno != EEXIST) {
         perror("mkdir base_dir_arg failed");
     }
-    
+
     char db_dir[1024];
     snprintf(db_dir, sizeof(db_dir), "%s/mpl_db", args_info.base_dir_arg);
     if (mkdir(db_dir, 0777) != 0 && errno != EEXIST) {
@@ -137,7 +138,7 @@ int main(int argc, char *argv[], char *envp[]) {
     }
 
     execve("/system/bin/main", argv, envp);
-    
+
     perror("execve");
     return 1;
 }

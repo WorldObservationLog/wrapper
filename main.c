@@ -34,6 +34,21 @@ static char *g_storefront_id = NULL;
 static char *g_dev_token = NULL;
 static char *g_music_token = NULL;
 
+/* Write a single-word state token to base_dir/drm-state.
+ * The Go engine reads this file via inotify to track wrapper lifecycle.
+ * States: STARTING  LOGIN  WAITING_2FA  INITIALIZING_FAIRPLAY  RUNNING
+ *         RECOVERY  FAILED  STOPPED
+ */
+static void write_drm_state(const char *state) {
+    if (!args_info.base_dir_arg) return;
+    char path[512];
+    snprintf(path, sizeof(path), "%s/drm-state", args_info.base_dir_arg);
+    FILE *fp = fopen(path, "w");
+    if (!fp) return;
+    fprintf(fp, "%s\n", state);
+    fclose(fp);
+}
+
 /* Protects preshareCtx against concurrent access from the main decrypt
  * thread (handle/getKdContext) and the recovery worker (refresh_decrypt_ctx).
  * Using PTHREAD_MUTEX_INITIALIZER avoids the need for an explicit init call. */
@@ -206,9 +221,10 @@ static void credentialHandler(struct shared_ptr *credReqHandler,
     int passLen = strlen(amPassword);
 
     if (need2FA) {
+        write_drm_state("WAITING_2FA");
         if (args_info.code_from_file_flag) {
             fprintf(stderr, "[!] Enter your 2FA code into rootfs/%s/2fa.txt\n", args_info.base_dir_arg);
-            fprintf(stderr, "[!] Example command: echo -n 114514 > rootfs/%s/2fa.txt\n", args_info.base_dir_arg);
+            fprintf(stderr, "[!] Example command: echo -n 123456 > rootfs/%s/2fa.txt\n", args_info.base_dir_arg);
             fprintf(stderr, "[!] Waiting for input...\n");
             int count = 0;
             while (1)
@@ -270,7 +286,7 @@ static inline void init() {
         setenv("all_proxy", args_info.proxy_arg, 1);
     }
 
-    static const char *resolvers[2] = {"223.5.5.5", "223.6.6.6"};
+    static const char *resolvers[2] = {"1.1.1.1", "8.8.8.8"};
     _resolv_set_nameservers_for_net(0, resolvers, 2, ".");
 
     // static char android_id[16];
@@ -1125,12 +1141,14 @@ int main(int argc, char *argv[]) {
 
     init();
     reqCtx = init_ctx();
+    write_drm_state("STARTING");
     if (args_info.login_given) {
         amUsername = strtok(args_info.login_arg, ":");
         amPassword = strtok(NULL, ":");
     }
     if (args_info.login_given && !login(reqCtx)) {
         fprintf(stderr, "[!] login failed\n");
+        write_drm_state("FAILED");
         return EXIT_FAILURE;
     }
     _ZN22SVPlaybackLeaseManagerC2ERKNSt6__ndk18functionIFvRKiEEERKNS1_IFvRKNS0_10shared_ptrIN17storeservicescore19StoreErrorConditionEEEEEE(
@@ -1144,6 +1162,7 @@ int main(int argc, char *argv[]) {
      * FHinstance are initialised so that refresh_decrypt_ctx() is safe to call
      * from the worker at any point after this. */
     start_recovery_thread();
+    write_drm_state("INITIALIZING_FAIRPLAY");
 
     offlineFlag = offline_available();
     if (offlineFlag) {
@@ -1154,22 +1173,26 @@ int main(int argc, char *argv[]) {
     g_storefront_id = get_account_storefront_id(reqCtx);
     if (g_storefront_id == NULL) {
         fprintf(stderr, "[!] failed to get storefront ID\n");
+        write_drm_state("FAILED");
         return EXIT_FAILURE;
     }
     g_dev_token = get_dev_token(reqCtx);
     if (g_dev_token == NULL) {
         fprintf(stderr, "[!] failed to get dev token\n");
+        write_drm_state("FAILED");
         return EXIT_FAILURE;
     }
     g_music_token = get_music_user_token(get_guid(), g_dev_token, reqCtx);
     if (g_music_token == NULL) {
         fprintf(stderr, "[!] failed to get music token\n");
+        write_drm_state("FAILED");
         return EXIT_FAILURE;
     }
     fprintf(stderr, "[+] account info cached successfully\n");
 
     write_storefront_id();
     write_music_token();
+    write_drm_state("RUNNING");
 
     pthread_t m3u8_thread;
     pthread_create(&m3u8_thread, NULL, &new_socket_m3u8, NULL);
