@@ -1,0 +1,36 @@
+FROM debian:13.2
+
+ARG TARGET_ARCH=amd64
+ARG NDK_VERSION=23
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        cmake \
+        unzip \
+        git \
+        ca-certificates \
+        aria2 \
+    && rm -rf /var/lib/apt/lists/*
+
+# NOTE: No system LLVM install needed — the Android NDK bundles its own
+# clang at android-ndk-r<N>b/toolchains/llvm/prebuilt/linux-x86_64/bin/
+
+# Download Android NDK
+RUN aria2c -x 16 -o ndk.zip \
+        https://dl.google.com/android/repository/android-ndk-r${NDK_VERSION}b-linux.zip \
+    && unzip -q -d /app ndk.zip \
+    && rm ndk.zip
+
+# Copy source (no glob — explicit)
+COPY cmdline.c cmdline.h cmdline.ggo ./
+COPY main.c main.cpp ./
+COPY wrapper.c wrapper-rootless.c ./
+COPY import.h ./
+COPY CMakeLists.txt ./
+COPY rootfs ./rootfs
+
+RUN mkdir -p build \
+    && cmake -S /app -B /app/build -DTARGET_ARCH=${TARGET_ARCH} \
+    && cmake --build /app/build -j$(nproc)

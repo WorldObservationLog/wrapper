@@ -34,6 +34,26 @@ static char *g_storefront_id = NULL;
 static char *g_dev_token = NULL;
 static char *g_music_token = NULL;
 
+/* Write a single-word state token to base_dir/drm-state.
+ * The Go engine reads this file via inotify to track wrapper lifecycle.
+ * States: STARTING  LOGIN  WAITING_2FA  INITIALIZING_FAIRPLAY  RUNNING
+ *         RECOVERY  FAILED  STOPPED
+ */
+static void write_drm_state(const char *state) {
+    if (!args_info.base_dir_arg) return;
+    char path[512];
+    snprintf(path, sizeof(path), "%s/drm-state", args_info.base_dir_arg);
+    FILE *fp = fopen(path, "w");
+    if (!fp) return;
+    fprintf(fp, "%s\n", state);
+    fclose(fp);
+}
+
+/* Protects preshareCtx against concurrent access from the main decrypt
+ * thread (handle/getKdContext) and the recovery worker (refresh_decrypt_ctx).
+ * Using PTHREAD_MUTEX_INITIALIZER avoids the need for an explicit init call. */
+static pthread_mutex_t g_ctx_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 #ifndef MyRelease
 static int (*orig_debug_log_enabled)(void);
 static int (*orig_android_log_print)(int prio, const char *tag, const char *fmt, ...);
@@ -201,9 +221,10 @@ static void credentialHandler(struct shared_ptr *credReqHandler,
     int passLen = strlen(amPassword);
 
     if (need2FA) {
+        write_drm_state("WAITING_2FA");
         if (args_info.code_from_file_flag) {
             fprintf(stderr, "[!] Enter your 2FA code into rootfs/%s/2fa.txt\n", args_info.base_dir_arg);
-            fprintf(stderr, "[!] Example command: echo -n 114514 > rootfs/%s/2fa.txt\n", args_info.base_dir_arg);
+            fprintf(stderr, "[!] Example command: echo -n 123456 > rootfs/%s/2fa.txt\n", args_info.base_dir_arg);
             fprintf(stderr, "[!] Waiting for input...\n");
             int count = 0;
             while (1)
@@ -265,7 +286,7 @@ static inline void init() {
         setenv("all_proxy", args_info.proxy_arg, 1);
     }
 
-    static const char *resolvers[2] = {"223.5.5.5", "223.6.6.6"};
+    static const char *resolvers[2] = {"1.1.1.1", "8.8.8.8"};
     _resolv_set_nameservers_for_net(0, resolvers, 2, ".");
 
     // static char android_id[16];
@@ -363,6 +384,10 @@ static inline struct shared_ptr init_ctx() {
 
 extern void *endLeaseCallback;
 extern void *pbErrCallback;
+extern void  start_recovery_thread(void);
+extern int   is_recovery_active(void);
+/* Returns current RecoveryState as int: 0=Running 1=Scheduled 2=Refreshing 3=Failed */
+extern int   get_recovery_state(void);
 
 inline static uint8_t login(struct shared_ptr reqCtx) {
     fprintf(stderr, "[+] logging in...\n");
@@ -439,9 +464,19 @@ static void *preshareCtx = NULL;
 inline static void *getKdContext(const char *const adam,
                                  const char *const uri) {
     uint8_t isPreshare = (strcmp("0", adam) == 0);
-    if (isPreshare && preshareCtx != NULL) {
-        return preshareCtx;
+
+    /* Fast-path: return cached preshare context if available.
+     * Lock only long enough to read the pointer — the long FairPlay
+     * network operations below must NOT be performed under this lock,
+     * or the recovery worker would block all decryption during reacquisition. */
+    if (isPreshare) {
+        pthread_mutex_lock(&g_ctx_mutex);
+        void *cached = preshareCtx;
+        pthread_mutex_unlock(&g_ctx_mutex);
+        if (cached != NULL)
+            return cached;
     }
+
     fprintf(stderr, "[.] adamId: %s, uri: %s\n", adam, uri);
 
     union std_string defaultId = new_std_string(adam);
@@ -471,22 +506,61 @@ inline static void *getKdContext(const char *const adam,
 
     void *kdContext =
         *_ZNK18SVFootHillPContext9kdContextEv(SVFootHillPContext.obj);
-    if (kdContext != NULL && isPreshare)
+
+    /* Store result under lock so the recovery worker sees a consistent value
+     * if it concurrently resets preshareCtx to NULL. */
+    if (kdContext != NULL && isPreshare) {
+        pthread_mutex_lock(&g_ctx_mutex);
         preshareCtx = kdContext;
+        pthread_mutex_unlock(&g_ctx_mutex);
+    }
+
     return kdContext;
 }
 
-void refresh_decrypt_ctx() {
+void refresh_decrypt_ctx(void) {
     uint8_t autom = 1;
+
+    /* Request a new playback lease from Apple. */
     _ZN22SVPlaybackLeaseManager12requestLeaseERKb(leaseMgr, &autom);
+
+    /* Tear down all cached FairPlay key contexts so fresh keys are derived. */
     _ZN21SVFootHillSessionCtrl16resetAllContextsEv(FHinstance);
+
+    /* Invalidate the preshare cache under lock before rebuilding it.
+     * Any concurrent getKdContext() call will miss the cache and fall through
+     * to a full key derivation — correct behaviour during recovery. */
+    pthread_mutex_lock(&g_ctx_mutex);
     preshareCtx = NULL;
-    preshareCtx = getKdContext("0", "skd://itunes.apple.com/P000000000/s1/e1");
+    pthread_mutex_unlock(&g_ctx_mutex);
+
+    /* Rebuild the preshare context.  getKdContext() will write the new pointer
+     * under g_ctx_mutex internally. */
+    getKdContext("0", "skd://itunes.apple.com/P000000000/s1/e1");
+
     fprintf(stderr, "[!] refreshed context\n");
+}
+
+/* Called by the recovery worker to determine whether reacquisition produced
+ * a usable decrypt context.  Reads preshareCtx under g_ctx_mutex. */
+int is_preshare_ctx_ready(void) {
+    pthread_mutex_lock(&g_ctx_mutex);
+    int ready = (preshareCtx != NULL);
+    pthread_mutex_unlock(&g_ctx_mutex);
+    return ready;
 }
 
 void handle(const int connfd) {
     while (1) {
+        /* Fail fast during lease recovery: avoid queuing FairPlay key-
+         * delivery requests to Apple's servers while the recovery worker
+         * is already performing a refresh cycle.  The client receives an
+         * EOF/broken-pipe and should retry after a brief pause. */
+        if (is_recovery_active()) {
+            fprintf(stderr, "[.] decrypt request refused: lease recovery in progress\n");
+            return;
+        }
+
         uint8_t adamSize;
         if (!readfull(connfd, &adamSize, sizeof(uint8_t)))
             return;
@@ -692,6 +766,17 @@ void handle_m3u8(const int connfd) {
         char *ptr;
         unsigned long adamID = strtoul(adam, &ptr, 10);
         const char *m3u8;
+
+        /* During lease recovery the decrypt context is being rebuilt.
+         * Return an empty line (same as a failed asset request) so the
+         * client can detect the condition and retry rather than waiting
+         * on a network call that will fail anyway. */
+        if (is_recovery_active()) {
+            fprintf(stderr, "[.] m3u8 request refused: lease recovery in progress\n");
+            writefull(connfd, "\n", 1);
+            continue;
+        }
+
         if (offlineFlag) {
             m3u8 = get_m3u8_method_download(reqCtx, adamID);
         } else {
@@ -1056,12 +1141,14 @@ int main(int argc, char *argv[]) {
 
     init();
     reqCtx = init_ctx();
+    write_drm_state("STARTING");
     if (args_info.login_given) {
         amUsername = strtok(args_info.login_arg, ":");
         amPassword = strtok(NULL, ":");
     }
     if (args_info.login_given && !login(reqCtx)) {
         fprintf(stderr, "[!] login failed\n");
+        write_drm_state("FAILED");
         return EXIT_FAILURE;
     }
     _ZN22SVPlaybackLeaseManagerC2ERKNSt6__ndk18functionIFvRKiEEERKNS1_IFvRKNS0_10shared_ptrIN17storeservicescore19StoreErrorConditionEEEEEE(
@@ -1070,6 +1157,12 @@ int main(int argc, char *argv[]) {
     _ZN22SVPlaybackLeaseManager25refreshLeaseAutomaticallyERKb(leaseMgr, &autom);
     _ZN22SVPlaybackLeaseManager12requestLeaseERKb(leaseMgr, &autom);
     FHinstance = _ZN21SVFootHillSessionCtrl8instanceEv();
+
+    /* Start the async recovery thread.  Must be started after leaseMgr and
+     * FHinstance are initialised so that refresh_decrypt_ctx() is safe to call
+     * from the worker at any point after this. */
+    start_recovery_thread();
+    write_drm_state("INITIALIZING_FAIRPLAY");
 
     offlineFlag = offline_available();
     if (offlineFlag) {
@@ -1080,22 +1173,26 @@ int main(int argc, char *argv[]) {
     g_storefront_id = get_account_storefront_id(reqCtx);
     if (g_storefront_id == NULL) {
         fprintf(stderr, "[!] failed to get storefront ID\n");
+        write_drm_state("FAILED");
         return EXIT_FAILURE;
     }
     g_dev_token = get_dev_token(reqCtx);
     if (g_dev_token == NULL) {
         fprintf(stderr, "[!] failed to get dev token\n");
+        write_drm_state("FAILED");
         return EXIT_FAILURE;
     }
     g_music_token = get_music_user_token(get_guid(), g_dev_token, reqCtx);
     if (g_music_token == NULL) {
         fprintf(stderr, "[!] failed to get music token\n");
+        write_drm_state("FAILED");
         return EXIT_FAILURE;
     }
     fprintf(stderr, "[+] account info cached successfully\n");
 
     write_storefront_id();
     write_music_token();
+    write_drm_state("RUNNING");
 
     pthread_t m3u8_thread;
     pthread_create(&m3u8_thread, NULL, &new_socket_m3u8, NULL);
