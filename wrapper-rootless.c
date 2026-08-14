@@ -1,3 +1,9 @@
+/*
+ * wrapper-rootless.c — Apple Music 解密 wrapper 的宿主层 (免 root 版)
+ * 与 wrapper.c 相同, 但用 user namespace (unshare CLONE_NEWUSER|NEWNS|NEWPID)
+ * + 写 uid_map/gid_map + deny setgroups, 无需 CAP_SYS_ADMIN 即可 chroot。
+ * 适用于无特权容器 / WSL 等环境。
+ */
 #define _GNU_SOURCE
 #include <errno.h>
 #include <sched.h>

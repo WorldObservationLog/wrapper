@@ -53,8 +53,8 @@ target_include_directories(main PRIVATE ${cjson_SOURCE_DIR})
 target_link_libraries(main PRIVATE cjson)
 target_link_libraries(main PRIVATE dobby)
 
-set_target_properties(main PROPERTIES 
-    COMPILE_DEFINITIONS "MyRelease"
+set_target_properties(main PROPERTIES
+    # MyRelease intentionally removed: debug build (Dobby hooks + log redirection)
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/rootfs/system/bin"
 )
 

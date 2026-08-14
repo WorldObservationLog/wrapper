@@ -1,3 +1,12 @@
+/*
+ * import.h — C 侧桥接头: 把 Apple Android 库的 C++ mangled 符号声明为 extern
+ * (storeservicescore / mediaplatform / SVFootHill / androidstoreservices),
+ * 并定义 shared_ptr / std_string / std_vector 的 C 内存布局模拟, 使 main.c / 
+ * client_test.cpp 能直接调用这些 C++ 函数 (与 NDK libc++_shared ABI 一致)。
+ *
+ * 文件尾部含 android_id (设备标识) 与 fairplayCert (Apple FPS 证书, base64),
+ * 用于 FairPlay 密钥派生。
+ */
 #pragma once
 
 struct shared_ptr {
@@ -35,7 +44,7 @@ static inline union std_string new_std_string(const char *s) {
 static inline struct std_vector new_std_vector(void *begin) {
     struct std_vector vector = {
         .begin = begin,
-        .end = begin + 1,
+        .end = (char *)begin + 1,
     };
     vector.end_capacity = vector.end;
     return vector;
@@ -44,7 +53,7 @@ static inline struct std_vector new_std_vector(void *begin) {
 static inline union std_string new_std_string_short_mode(const char *str) {
     short str_size = strlen(str);
     union std_string std_str = {
-        .mark = str_size << 1,
+        .mark = (uint8_t)(str_size << 1),
     };
     strcpy(std_str.str, str);
     return std_str;
