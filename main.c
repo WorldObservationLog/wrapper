@@ -18,7 +18,8 @@
  *   捕获, 供纯 Python 离线解密器 (decryption/src/decrypt_tool.py --content-server)
  *   对任意新音轨做完全离线解密。见 decryption/docs/offline-decryption.md。
  *
- * 构建: CMakeLists.txt (NDK clang, debug 构建含 Dobby hook; MyRelease 构建不编译 hook)
+ * 构建: CMakeLists.txt (NDK clang; cmake -DMYRELEASE=ON 切换 Release) — R1 key-server
+ *   hook (Dobby) 两种模式都编译; curl/log debug hook 仅 Debug
  */
 #include <errno.h>
 #include <setjmp.h>
@@ -39,10 +40,8 @@
 #include "import.h"
 #include "cmdline.h"
 #include "cJSON.h"
-#ifndef MyRelease
 #include "dobby.h"
 #include <link.h>
-#endif
 
 static struct shared_ptr apInf;
 static uint8_t leaseMgr[16];
@@ -894,7 +893,6 @@ static void key_json_error(const int connfd, const char *code, const char *msg) 
 }
 
 
-#ifndef MyRelease
 /* =====================================================================
  * content 解密模板捕获 (供 40020 key server 返回)
  * ---------------------------------------------------------------------
@@ -1022,7 +1020,6 @@ static void b64encode(const uint8_t *in, size_t len, char *out) {
     }
     out[o] = 0;
 }
-#endif
 
 /*
  * 40020 key 服务 (HTTP GET): 解析 ?adamId=&uri= 参数。
@@ -1086,7 +1083,6 @@ void handle_key_request(const int connfd) {
     cJSON_AddStringToObject(root, "adamId", adamId);
     cJSON_AddStringToObject(root, "keyUri", uri);
     cJSON_AddStringToObject(root, "contentKey", contentKey);
-#ifndef MyRelease
     {
         uint8_t cap_ctx[0x8000], cap_state[0x2100];
         uint64_t rcx = 0, rax = 0, rdx = 0, r9 = 0, rbp = 0;
@@ -1119,7 +1115,6 @@ void handle_key_request(const int connfd) {
             fprintf(stderr, "[.] key response +ctx template (adamId=%s)\n", adamId);
         }
     }
-#endif
     char *json_body = cJSON_PrintUnformatted(root);
     cJSON_Delete(root);
     if (!json_body) { free(contentKey); free(adamId); free(uri); return; }
