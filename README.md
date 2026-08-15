@@ -89,16 +89,16 @@ Usage: wrapper [OPTION]...
 
 ## Services (4 TCP ports)
 
-| Port | Option | Protocol | 用途 |
-|------|--------|----------|------|
-| 10020 | `-D` | 二进制 | 样本解密: `[1B len][adam][1B len][uri]` + 循环 `[4B size][密文]→明文` |
-| 20020 | `-M` | 二进制 | M3U8 流地址: `[1B len][adamId数字]` → M3U8 URL |
-| 30020 | `-A` | HTTP | 账号信息 JSON |
-| 40020 | `-K` | HTTP | **key 服务**: `?adamId=&uri=` → `{contentKey, ctx, state, rcx/rax/rdx/r9/rbp}` 解密模板 |
+| Port | Option | Protocol | Purpose |
+|------|--------|----------|---------|
+| 10020 | `-D` | Binary | Sample decryption: `[1B len][adamId][1B len][uri]` then loop `[4B size][ciphertext]` → plaintext |
+| 20020 | `-M` | Binary | M3U8 stream URL: `[1B len][adamId digits]` → M3U8 URL |
+| 30020 | `-A` | HTTP | Account info JSON |
+| 40020 | `-K` | HTTP | Key service: `?adamId=&uri=` → `{contentKey, ctx, state, rcx/rax/rdx/r9/rbp}` decryption template |
 
-### 40020 key 服务（离线解密模板）
+### 40020 key service
 
-对任意音轨请求一次, 返回完整的 content 解密模板, 供纯 Python 离线解密器使用:
+Request any track once to get the complete content decryption template:
 
 ```bash
 curl "http://127.0.0.1:40020/?adamId=1720704575&uri=skd%3A%2F%2Fitunes.apple.com%2Fp683167092%2Fc6"
@@ -106,30 +106,7 @@ curl "http://127.0.0.1:40020/?adamId=1720704575&uri=skd%3A%2F%2Fitunes.apple.com
 #    "rcx":"0x..","rax":"0x..","rdx":"0x..","r9":"0x..","rbp":"0x.."}
 ```
 
-模板由 R1 入口 (libCoreLSKD+0x1d5709) 的 Dobby hook 捕获 (debug 构建), 详见
-`decryption/docs/offline-decryption.md`。
-
-## Offline decryption（纯 Python 离线解密）
-
-本仓库含一套完整的纯 Python 解密实现 (`decryption/`), 无需 Qiling / 原生库:
-
-```bash
-# 验证 wrapper 解密正确性 (专辑《戀曲2000》10 音轨 prefetch + content)
-python decryption/tests/test_main_go.py          # → 20/20 PASS
-
-# 最小化单曲解密: M3U8 → 逐样本解密 → 可播放 m4a
-python decryption/src/decrypt_song.py <adamId> --variant gr256 --out song.m4a
-
-# 直接解密 content 样本 (40020 实时获取模板)
-python decryption/src/decrypt_tool.py <key> <密文> --content-server <adamId> <keyUri> 127.0.0.1:40020
-```
-
-详见 `decryption/README.md`。
-
-## Security note
-
-`rootfs/data/` 含真实 Apple Music 账户会话 / contentKey 等敏感数据 (已 gitignore,
-不会提交)。请勿将 `rootfs/data` 或 `decryption/research/data/keys` 下内容公开。
+The template is captured by a Dobby hook at the R1 entry (`libCoreLSKD+0x1d5709`) in debug builds.
 
 ## Special thanks
 
