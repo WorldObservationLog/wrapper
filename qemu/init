@@ -40,6 +40,8 @@ if [ -f /sys/firmware/qemu_fw_cfg/by_name/lite_args/raw ]; then
     /bin/busybox cat /sys/firmware/qemu_fw_cfg/by_name/lite_args/raw > /data/.lite-qemu-args
 fi
 
+/bin/busybox chmod +x /system/bin/lite 2>/dev/null || true
+
 if [ -s /data/.lite-qemu-args ]; then
     echo "[init] wrapper-lite QEMU guest (custom args from file)"
     LITE_ARGS_FILE=/data/.lite-qemu-args /system/bin/lite

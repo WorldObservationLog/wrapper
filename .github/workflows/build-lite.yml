@@ -86,9 +86,6 @@ jobs:
           - name: windows-x86_64
             os: windows-2022
             artifact_suffix: windows-x86_64
-          - name: macos-x86_64
-            os: macos-13
-            artifact_suffix: macos-x86_64
           - name: macos-aarch64
             os: macos-14
             artifact_suffix: macos-aarch64
