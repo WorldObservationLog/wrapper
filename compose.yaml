@@ -4,10 +4,13 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        TARGET_ARCH: amd64
         NDK_VERSION: 23
     volumes:
       - ./rootfs/data:/app/rootfs/data
+    ports:
+      - "8080:8080"
     environment:
       USERNAME: ${USERNAME}
       PASSWORD: ${PASSWORD}
+    security_opt:
+      - seccomp:unconfined

@@ -1,0 +1,51 @@
+#!/bin/busybox sh
+/bin/busybox mkdir -p /proc /sys /dev
+/bin/busybox mount -t proc proc /proc
+/bin/busybox mount -t sysfs sysfs /sys
+/bin/busybox mount -t devtmpfs devtmpfs /dev
+/bin/busybox mkdir -p /dev/pts
+/bin/busybox mount -t devpts devpts /dev/pts 2>/dev/null || true
+/bin/busybox hostname wrapper-lite
+
+# NIC
+/bin/busybox insmod /e1000.ko 2>/dev/null || true
+/bin/busybox ip link set lo up
+/bin/busybox ip link set eth0 up 2>/dev/null || true
+/bin/busybox ip addr add 10.0.2.15/24 dev eth0 2>/dev/null || true
+/bin/busybox ip route add default via 10.0.2.2 dev eth0 2>/dev/null || true
+
+# Data disk (virtio-blk over PCI + ext4)
+/bin/busybox insmod /virtio.ko 2>/dev/null || true
+/bin/busybox insmod /virtio_ring.ko 2>/dev/null || true
+/bin/busybox insmod /virtio_pci_modern_dev.ko 2>/dev/null || true
+/bin/busybox insmod /virtio_pci_legacy_dev.ko 2>/dev/null || true
+/bin/busybox insmod /virtio_pci.ko 2>/dev/null || true
+/bin/busybox insmod /virtio_blk.ko 2>/dev/null || true
+/bin/busybox insmod /crc16.ko 2>/dev/null || true
+/bin/busybox insmod /crc32c_generic.ko 2>/dev/null || true
+/bin/busybox insmod /jbd2.ko 2>/dev/null || true
+/bin/busybox insmod /mbcache.ko 2>/dev/null || true
+/bin/busybox insmod /ext4.ko 2>/dev/null || true
+
+/bin/busybox mkdir -p /data
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+    [ -e /dev/vda ] && break
+    sleep 1
+done
+/bin/busybox mount -t ext4 /dev/vda /data 2>/dev/null || echo "[init] data disk mount failed"
+
+# Host-provided lite args, one argument per line.
+/bin/busybox insmod /qemu_fw_cfg.ko 2>/dev/null || true
+if [ -f /sys/firmware/qemu_fw_cfg/by_name/lite_args/raw ]; then
+    /bin/busybox cat /sys/firmware/qemu_fw_cfg/by_name/lite_args/raw > /data/.lite-qemu-args
+fi
+
+if [ -s /data/.lite-qemu-args ]; then
+    echo "[init] wrapper-lite QEMU guest (custom args from file)"
+    LITE_ARGS_FILE=/data/.lite-qemu-args /system/bin/lite
+    echo "[init] lite exited, powering off..."
+    /bin/busybox poweroff -f
+else
+    echo "[init] wrapper-lite QEMU guest booting..."
+    exec /system/bin/lite --base-dir /data --host 0.0.0.0 --port 8080
+fi

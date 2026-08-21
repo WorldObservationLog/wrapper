@@ -9,6 +9,18 @@
  */
 #pragma once
 
+/*
+ * 链接规范: 这些 mangled 符号 (如 _ZN17storeservicescore...) 的名字本身已是
+ * Itanium C++ mangled 名。C 编译单元直接 extern 即可; C++ 编译单元必须用
+ * extern "C" 声明, 否则 clang 会把 _ZN... 当作普通标识符再 mangling 一遍
+ * (生成 _Z148_ZN...), 导致链接不到库符号。
+ */
+#ifdef __cplusplus
+#define IMPORT_EXTERN extern "C"
+#else
+#define IMPORT_EXTERN extern
+#endif
+
 struct shared_ptr {
 	void *obj;
 	void *ctrl_blk;
@@ -66,230 +78,230 @@ static inline const char *std_string_data(union std_string *str) {
 	return str->data;
 }
 
-extern void curl_easy_setopt(void *curl, int32_t option, ...);
-extern void *curl_easy_init();
-extern void *curl_easy_perform(void *);
-extern void curl_easy_cleanup(void *);
+IMPORT_EXTERN void curl_easy_setopt(void *curl, int32_t option, ...);
+IMPORT_EXTERN void *curl_easy_init();
+IMPORT_EXTERN void *curl_easy_perform(void *);
+IMPORT_EXTERN void curl_easy_cleanup(void *);
 
-extern void _ZN20androidstoreservices30SVSubscriptionStatusMgrFactory6createEv(struct shared_ptr *);
-extern void
+IMPORT_EXTERN void _ZN20androidstoreservices30SVSubscriptionStatusMgrFactory6createEv(struct shared_ptr *);
+IMPORT_EXTERN void
 _ZN20androidstoreservices27SVSubscriptionStatusMgrImpl33checkSubscriptionStatusFromSourceERKNSt6__ndk110shared_ptrIN17storeservicescore14RequestContextEEERKNS_23SVSubscriptionStatusMgr26SVSubscriptionStatusSourceE(
 	struct shared_ptr *, void *, struct shared_ptr *, int *);
-extern void
+IMPORT_EXTERN void
 _ZN17storeservicescore14RequestContext24setFairPlayDirectoryPathERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(
 	void *, union std_string *);
 
-extern void _resolv_set_nameservers_for_net(unsigned netid, const char **servers, int numservers, const char *domains);
+IMPORT_EXTERN void _resolv_set_nameservers_for_net(unsigned netid, const char **servers, int numservers, const char *domains);
 
-extern void
+IMPORT_EXTERN void
 _ZN14FootHillConfig6configERKNSt6__ndk112basic_stringIcNS0_11char_traitsIcEENS0_9allocatorIcEEEE(union std_string *);
 
-extern void
+IMPORT_EXTERN void
 _ZNSt6__ndk110shared_ptrIN17storeservicescore14RequestContextEE11make_sharedIJRNS_12basic_stringIcNS_11char_traitsIcEENS_9allocatorIcEEEEEEES3_DpOT_(
 	struct shared_ptr *, union std_string *);
-extern void _ZNSt6__ndk110shared_ptrIN20androidstoreservices28AndroidPresentationInterfaceEE11make_sharedIJEEES3_DpOT_(
+IMPORT_EXTERN void _ZNSt6__ndk110shared_ptrIN20androidstoreservices28AndroidPresentationInterfaceEE11make_sharedIJEEES3_DpOT_(
 	struct shared_ptr *);
 
-extern void
+IMPORT_EXTERN void
 _ZN20androidstoreservices28AndroidPresentationInterface16setDialogHandlerEPFvlNSt6__ndk110shared_ptrIN17storeservicescore14ProtocolDialogEEENS2_INS_36AndroidProtocolDialogResponseHandlerEEEE(
 	void *, void (*)(long, struct shared_ptr *, struct shared_ptr *));
-extern void
+IMPORT_EXTERN void
 _ZN20androidstoreservices28AndroidPresentationInterface21setCredentialsHandlerEPFvNSt6__ndk110shared_ptrIN17storeservicescore18CredentialsRequestEEENS2_INS_33AndroidCredentialsResponseHandlerEEEE(
 	void *, void (*)(struct shared_ptr *, struct shared_ptr *));
 
-extern void
+IMPORT_EXTERN void
 _ZN17storeservicescore14RequestContext24setPresentationInterfaceERKNSt6__ndk110shared_ptrINS_21PresentationInterfaceEEE(
 	void *, struct shared_ptr *);
 
-extern void
+IMPORT_EXTERN void
 _ZNSt6__ndk110shared_ptrIN17storeservicescore16AuthenticateFlowEE11make_sharedIJRNS0_INS1_14RequestContextEEEEEES3_DpOT_(
 	struct shared_ptr *, struct shared_ptr *);
-extern void _ZN17storeservicescore16AuthenticateFlow3runEv(void *);
-extern struct shared_ptr *_ZNK17storeservicescore16AuthenticateFlow8responseEv(void *);
-extern int _ZNK17storeservicescore20AuthenticateResponse12responseTypeEv(void *);
+IMPORT_EXTERN void _ZN17storeservicescore16AuthenticateFlow3runEv(void *);
+IMPORT_EXTERN struct shared_ptr *_ZNK17storeservicescore16AuthenticateFlow8responseEv(void *);
+IMPORT_EXTERN int _ZNK17storeservicescore20AuthenticateResponse12responseTypeEv(void *);
 
 // storeservicescore::PlaybackLeaseSession::PlaybackLeaseSession(std::__ndk1::shared_ptr<storeservicescore::RequestContext>
 // const&)
-extern void
+IMPORT_EXTERN void
 _ZN22SVPlaybackLeaseManagerC2ERKNSt6__ndk18functionIFvRKiEEERKNS1_IFvRKNS0_10shared_ptrIN17storeservicescore19StoreErrorConditionEEEEEE(
 	void *, void *, void *);
-extern void _ZN22SVPlaybackLeaseManager25refreshLeaseAutomaticallyERKb(void *, uint8_t *);
-extern void _ZN22SVPlaybackLeaseManager12requestLeaseERKb(void *, uint8_t *);
+IMPORT_EXTERN void _ZN22SVPlaybackLeaseManager25refreshLeaseAutomaticallyERKb(void *, uint8_t *);
+IMPORT_EXTERN void _ZN22SVPlaybackLeaseManager12requestLeaseERKb(void *, uint8_t *);
 
 // storeservicescore::ProtocolDialogResponse::setSelectedButton(std::__ndk1::shared_ptr<storeservicescore::ProtocolButton>
 // const&)
-extern void
+IMPORT_EXTERN void
 _ZN17storeservicescore22ProtocolDialogResponse17setSelectedButtonERKNSt6__ndk110shared_ptrINS_14ProtocolButtonEEE(
 	void *, struct shared_ptr *);
 // storeservicescore::ProtocolDialog::title() const
-extern union std_string *_ZNK17storeservicescore14ProtocolDialog5titleEv(void *);
+IMPORT_EXTERN union std_string *_ZNK17storeservicescore14ProtocolDialog5titleEv(void *);
 // storeservicescore::ProtocolDialog::message() const
-extern union std_string *_ZNK17storeservicescore14ProtocolDialog7messageEv(void *);
+IMPORT_EXTERN union std_string *_ZNK17storeservicescore14ProtocolDialog7messageEv(void *);
 
-extern union std_string *_ZNK17storeservicescore18CredentialsRequest5titleEv(void *);
-extern union std_string *_ZNK17storeservicescore18CredentialsRequest7messageEv(void *);
-extern uint8_t _ZNK17storeservicescore18CredentialsRequest28requiresHSA2VerificationCodeEv(void *);
+IMPORT_EXTERN union std_string *_ZNK17storeservicescore18CredentialsRequest5titleEv(void *);
+IMPORT_EXTERN union std_string *_ZNK17storeservicescore18CredentialsRequest7messageEv(void *);
+IMPORT_EXTERN uint8_t _ZNK17storeservicescore18CredentialsRequest28requiresHSA2VerificationCodeEv(void *);
 
-extern void
+IMPORT_EXTERN void
 _ZN20androidstoreservices28AndroidPresentationInterface28handleProtocolDialogResponseERKlRKNSt6__ndk110shared_ptrIN17storeservicescore22ProtocolDialogResponseEEE(
 	void *, long *j, struct shared_ptr *);
 // androidstoreservices::AndroidPresentationInterface::handleCredentialsResponse(std::__ndk1::shared_ptr<storeservicescore::CredentialsResponse>
 // const&)
-extern void
+IMPORT_EXTERN void
 _ZN20androidstoreservices28AndroidPresentationInterface25handleCredentialsResponseERKNSt6__ndk110shared_ptrIN17storeservicescore19CredentialsResponseEEE(
 	void *, struct shared_ptr *);
 
-extern void _ZN17storeservicescore22ProtocolDialogResponseC1Ev(void *);
+IMPORT_EXTERN void _ZN17storeservicescore22ProtocolDialogResponseC1Ev(void *);
 
 // storeservicescore::CredentialsResponse::CredentialsResponse()
-extern void _ZN17storeservicescore19CredentialsResponseC1Ev(void *);
+IMPORT_EXTERN void _ZN17storeservicescore19CredentialsResponseC1Ev(void *);
 // storeservicescore::CredentialsResponse::setUserName(std::__ndk1::basic_string<char,
 // std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > const&)
-extern void
+IMPORT_EXTERN void
 _ZN17storeservicescore19CredentialsResponse11setUserNameERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(
 	void *, union std_string *);
 // storeservicescore::CredentialsResponse::setPassword(std::__ndk1::basic_string<char,
 // std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > const&)
-extern void
+IMPORT_EXTERN void
 _ZN17storeservicescore19CredentialsResponse11setPasswordERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(
 	void *, union std_string *);
 // storeservicescore::CredentialsResponse::setResponseType(storeservicescore::CredentialsResponse::ResponseType)
-extern void _ZN17storeservicescore19CredentialsResponse15setResponseTypeENS0_12ResponseTypeE(void *, int responseType);
+IMPORT_EXTERN void _ZN17storeservicescore19CredentialsResponse15setResponseTypeENS0_12ResponseTypeE(void *, int responseType);
 
 // storeservicescore::AuthenticateFlow::response() const
-extern struct shared_ptr *_ZNK17storeservicescore16AuthenticateFlow8responseEv(void *);
+IMPORT_EXTERN struct shared_ptr *_ZNK17storeservicescore16AuthenticateFlow8responseEv(void *);
 
-extern struct std_vector *_ZNK17storeservicescore14ProtocolDialog7buttonsEv(void *);
-extern union std_string *_ZNK17storeservicescore14ProtocolButton5titleEv(void *);
+IMPORT_EXTERN struct std_vector *_ZNK17storeservicescore14ProtocolDialog7buttonsEv(void *);
+IMPORT_EXTERN union std_string *_ZNK17storeservicescore14ProtocolButton5titleEv(void *);
 
 // storeservicescore::DeviceGUID::instance()
-extern void _ZN17storeservicescore10DeviceGUID8instanceEv(struct shared_ptr *);
+IMPORT_EXTERN void _ZN17storeservicescore10DeviceGUID8instanceEv(struct shared_ptr *);
 // storeservicescore::DeviceGUID::configure(std::__ndk1::basic_string<char,
 // std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > const&,
 // std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>,
 // std::__ndk1::allocator<char> > const&, unsigned int const&, bool const&)
-extern void
+IMPORT_EXTERN void
 _ZN17storeservicescore10DeviceGUID9configureERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEES9_RKjRKb(
 	void *, void *, union std_string *, union std_string *, unsigned int *, uint8_t *);
 
 // mediaplatform::DebugLogEnabledForPriority(mediaplatform::LogPriority)
-extern uint8_t _ZN13mediaplatform26DebugLogEnabledForPriorityENS_11LogPriorityE();
+IMPORT_EXTERN uint8_t _ZN13mediaplatform26DebugLogEnabledForPriorityENS_11LogPriorityE();
 
-extern void *_ZTVNSt6__ndk120__shared_ptr_emplaceIN17storeservicescore22ProtocolDialogResponseENS_9allocatorIS2_EEEE;
-extern void *_ZTVNSt6__ndk120__shared_ptr_emplaceIN17storeservicescore19CredentialsResponseENS_9allocatorIS2_EEEE;
+IMPORT_EXTERN void *_ZTVNSt6__ndk120__shared_ptr_emplaceIN17storeservicescore22ProtocolDialogResponseENS_9allocatorIS2_EEEE;
+IMPORT_EXTERN void *_ZTVNSt6__ndk120__shared_ptr_emplaceIN17storeservicescore19CredentialsResponseENS_9allocatorIS2_EEEE;
 // vtable for
 // std::__ndk1::__shared_ptr_emplace<storeservicescore::RequestContextConfig,
 // std::__ndk1::allocator<storeservicescore::RequestContextConfig> >
-extern void *_ZTVNSt6__ndk120__shared_ptr_emplaceIN17storeservicescore20RequestContextConfigENS_9allocatorIS2_EEEE;
+IMPORT_EXTERN void *_ZTVNSt6__ndk120__shared_ptr_emplaceIN17storeservicescore20RequestContextConfigENS_9allocatorIS2_EEEE;
 
 // storeservicescore::RequestContextConfig::RequestContextConfig()
-extern void _ZN17storeservicescore20RequestContextConfigC2Ev(void *);
-extern void _ZN17storeservicescore20RequestContextConfig9setCPFlagEb(void *, uint8_t);
-extern void
+IMPORT_EXTERN void _ZN17storeservicescore20RequestContextConfigC2Ev(void *);
+IMPORT_EXTERN void _ZN17storeservicescore20RequestContextConfig9setCPFlagEb(void *, uint8_t);
+IMPORT_EXTERN void
 _ZN17storeservicescore20RequestContextConfig20setBaseDirectoryPathERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(
 	void *, union std_string *);
 // storeservicescore::RequestContextConfig::setClientIdentifier(std::__ndk1::basic_string<char,
 // std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > const&)
-extern void
+IMPORT_EXTERN void
 _ZN17storeservicescore20RequestContextConfig19setClientIdentifierERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(
 	void *, union std_string *);
-extern void
+IMPORT_EXTERN void
 _ZN17storeservicescore20RequestContextConfig20setVersionIdentifierERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(
 	void *, union std_string *);
-extern void
+IMPORT_EXTERN void
 _ZN17storeservicescore20RequestContextConfig21setPlatformIdentifierERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(
 	void *, union std_string *);
-extern void
+IMPORT_EXTERN void
 _ZN17storeservicescore20RequestContextConfig17setProductVersionERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(
 	void *, union std_string *);
-extern void
+IMPORT_EXTERN void
 _ZN17storeservicescore20RequestContextConfig14setDeviceModelERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(
 	void *, union std_string *);
-extern void
+IMPORT_EXTERN void
 _ZN17storeservicescore20RequestContextConfig15setBuildVersionERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(
 	void *, union std_string *);
-extern void
+IMPORT_EXTERN void
 _ZN17storeservicescore20RequestContextConfig19setLocaleIdentifierERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(
 	void *, union std_string *);
-extern void
+IMPORT_EXTERN void
 _ZN17storeservicescore20RequestContextConfig21setLanguageIdentifierERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(
 	void *, union std_string *);
-extern void
+IMPORT_EXTERN void
 _ZN17storeservicescore20RequestContextConfig24setFairPlayDirectoryPathERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(
 	void *, union std_string *);
 
-extern void
+IMPORT_EXTERN void
 _ZN17storeservicescore14RequestContext4initERKNSt6__ndk110shared_ptrINS_20RequestContextConfigEEE(void *, void *,
 																								  struct shared_ptr *);
 
-extern void *_ZN21SVFootHillSessionCtrl8instanceEv();
-extern void *_ZN21SVFootHillSessionCtrl7destroyEv();
-extern void _ZN21SVFootHillSessionCtrl9cleanKeysERKNSt6__ndk112basic_stringIcNS0_11char_traitsIcEENS0_9allocatorIcEEEE(
+IMPORT_EXTERN void *_ZN21SVFootHillSessionCtrl8instanceEv();
+IMPORT_EXTERN void *_ZN21SVFootHillSessionCtrl7destroyEv();
+IMPORT_EXTERN void _ZN21SVFootHillSessionCtrl9cleanKeysERKNSt6__ndk112basic_stringIcNS0_11char_traitsIcEENS0_9allocatorIcEEEE(
 	void *, union std_string *);
-extern void
+IMPORT_EXTERN void
 _ZN21SVFootHillSessionCtrl16getPersistentKeyERKNSt6__ndk112basic_stringIcNS0_11char_traitsIcEENS0_9allocatorIcEEEES8_S8_S8_S8_S8_S8_S8_(
 	struct shared_ptr *, void *, union std_string *, union std_string *, union std_string *, union std_string *,
 	union std_string *, union std_string *, union std_string *, union std_string *);
-extern void
+IMPORT_EXTERN void
 _ZN21SVFootHillSessionCtrl14decryptContextERKNSt6__ndk112basic_stringIcNS0_11char_traitsIcEENS0_9allocatorIcEEEERKN11SVDecryptor15SVDecryptorTypeERKb(
 	struct shared_ptr *ret, void *sessCtrlInstance, union std_string *ckc);
-extern void _ZNSt6__ndk110shared_ptrI18SVFootHillPContextED2Ev(struct shared_ptr *);
-extern void **_ZNK18SVFootHillPContext9kdContextEv(void *);
-extern long NfcRKVnxuKZy04KWbdFu71Ou(void *, uint32_t, void *, void *, size_t);
+IMPORT_EXTERN void _ZNSt6__ndk110shared_ptrI18SVFootHillPContextED2Ev(struct shared_ptr *);
+IMPORT_EXTERN void **_ZNK18SVFootHillPContext9kdContextEv(void *);
+IMPORT_EXTERN long NfcRKVnxuKZy04KWbdFu71Ou(void *, uint32_t, void *, void *, size_t);
 
-extern void _ZN8FootHillC2ERKNSt6__ndk112basic_stringIcNS0_11char_traitsIcEENS0_9allocatorIcEEEES8_(void *,
+IMPORT_EXTERN void _ZN8FootHillC2ERKNSt6__ndk112basic_stringIcNS0_11char_traitsIcEENS0_9allocatorIcEEEES8_(void *,
 																									union std_string *,
 																									union std_string *);
-extern void _ZN8FootHill24defaultContextIdentifierEv(void *);
+IMPORT_EXTERN void _ZN8FootHill24defaultContextIdentifierEv(void *);
 
 // RequestContextManager::configure(std::__ndk1::shared_ptr<storeservicescore::RequestContext>
 // const&)
-extern void _ZN21RequestContextManager9configureERKNSt6__ndk110shared_ptrIN17storeservicescore14RequestContextEEE(
+IMPORT_EXTERN void _ZN21RequestContextManager9configureERKNSt6__ndk110shared_ptrIN17storeservicescore14RequestContextEEE(
 	struct shared_ptr *);
 
-extern struct shared_ptr *_ZN22SVPlaybackLeaseManager12requestAssetERKmRKNSt6__ndk16vectorINS2_12basic_stringIcNS2_11char_traitsIcEENS2_9allocatorIcEEEENS7_IS9_EEEERKb(
+IMPORT_EXTERN struct shared_ptr *_ZN22SVPlaybackLeaseManager12requestAssetERKmRKNSt6__ndk16vectorINS2_12basic_stringIcNS2_11char_traitsIcEENS2_9allocatorIcEEEENS7_IS9_EEEERKb(
 	void *, void *, unsigned long *, struct std_vector *, uint8_t *
 );
-extern int _ZNK23SVPlaybackAssetResponse13hasValidAssetEv(void *);
-extern struct shared_ptr *_ZNK23SVPlaybackAssetResponse13playbackAssetEv(void *);
-extern union std_string *_ZNK17storeservicescore13PlaybackAsset9URLStringEv(void *, uint8_t *);
+IMPORT_EXTERN int _ZNK23SVPlaybackAssetResponse13hasValidAssetEv(void *);
+IMPORT_EXTERN struct shared_ptr *_ZNK23SVPlaybackAssetResponse13playbackAssetEv(void *);
+IMPORT_EXTERN union std_string *_ZNK17storeservicescore13PlaybackAsset9URLStringEv(void *, uint8_t *);
 
-extern union std_string *_ZNK17storeservicescore14RequestContext20storeFrontIdentifierERKNSt6__ndk110shared_ptrINS_6URLBagEEE(void *, void *, struct shared_ptr *);
+IMPORT_EXTERN union std_string *_ZNK17storeservicescore14RequestContext20storeFrontIdentifierERKNSt6__ndk110shared_ptrINS_6URLBagEEE(void *, void *, struct shared_ptr *);
 
-extern void _ZN21SVFootHillSessionCtrl16resetAllContextsEv(void *);
-extern int __android_log_print(int prio, const char *tag, const char *fmt, ...);
-extern int __android_log_write(int prio, const char *tag, const char *text);
+IMPORT_EXTERN void _ZN21SVFootHillSessionCtrl16resetAllContextsEv(void *);
+IMPORT_EXTERN int __android_log_print(int prio, const char *tag, const char *fmt, ...);
+IMPORT_EXTERN int __android_log_write(int prio, const char *tag, const char *text);
 
-extern void *_ZTVNSt6__ndk120__shared_ptr_emplaceIN13mediaplatform11HTTPMessageENS_9allocatorIS2_EEEE;
-extern void *_ZN13mediaplatform11HTTPMessageC2ENSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEES7_(void *,  union std_string *, union std_string *);
-extern void _ZN13mediaplatform11HTTPMessage9setHeaderERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEES9_(void *, union std_string *, union std_string *);
-extern void _ZN13mediaplatform11HTTPMessage11setBodyDataEPcm(void *,char *, u_long);
-extern void *_ZN17storeservicescore10DeviceGUID4guidEv(void *, void *);
-extern char *_ZNK13mediaplatform4Data5bytesEv(void *);
-extern void *_ZN17storeservicescore10URLRequestC2ERKNSt6__ndk110shared_ptrIN13mediaplatform11HTTPMessageEEERKNS2_INS_14RequestContextEEE(void *, struct shared_ptr *, struct shared_ptr *);
-extern void *_ZN17storeservicescore10URLRequest19setRequestParameterERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEES9_(void *, union std_string *, union std_string *);
-extern void *_ZN17storeservicescore10URLRequest3runEv(void *);
-extern struct shared_ptr *_ZNK17storeservicescore10URLRequest5errorEv(void *);
-extern struct shared_ptr *_ZNK17storeservicescore10URLRequest8responseEv(void *);
-extern struct shared_ptr *_ZNK17storeservicescore11URLResponse18underlyingResponseEv(void *);
+IMPORT_EXTERN void *_ZTVNSt6__ndk120__shared_ptr_emplaceIN13mediaplatform11HTTPMessageENS_9allocatorIS2_EEEE;
+IMPORT_EXTERN void *_ZN13mediaplatform11HTTPMessageC2ENSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEES7_(void *,  union std_string *, union std_string *);
+IMPORT_EXTERN void _ZN13mediaplatform11HTTPMessage9setHeaderERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEES9_(void *, union std_string *, union std_string *);
+IMPORT_EXTERN void _ZN13mediaplatform11HTTPMessage11setBodyDataEPcm(void *,char *, u_long);
+IMPORT_EXTERN void *_ZN17storeservicescore10DeviceGUID4guidEv(void *, void *);
+IMPORT_EXTERN char *_ZNK13mediaplatform4Data5bytesEv(void *);
+IMPORT_EXTERN void *_ZN17storeservicescore10URLRequestC2ERKNSt6__ndk110shared_ptrIN13mediaplatform11HTTPMessageEEERKNS2_INS_14RequestContextEEE(void *, struct shared_ptr *, struct shared_ptr *);
+IMPORT_EXTERN void *_ZN17storeservicescore10URLRequest19setRequestParameterERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEES9_(void *, union std_string *, union std_string *);
+IMPORT_EXTERN void *_ZN17storeservicescore10URLRequest3runEv(void *);
+IMPORT_EXTERN struct shared_ptr *_ZNK17storeservicescore10URLRequest5errorEv(void *);
+IMPORT_EXTERN struct shared_ptr *_ZNK17storeservicescore10URLRequest8responseEv(void *);
+IMPORT_EXTERN struct shared_ptr *_ZNK17storeservicescore11URLResponse18underlyingResponseEv(void *);
 
-extern void * _ZN17storeservicescore15PurchaseRequestC2ERKNSt6__ndk110shared_ptrINS_14RequestContextEEE(void *, struct shared_ptr *);
-extern void *_ZN17storeservicescore15PurchaseRequest23setProcessDialogActionsEb(void *, int);
-extern void *_ZN17storeservicescore15PurchaseRequest12setURLBagKeyERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(void *, union std_string *);
-extern void *_ZN17storeservicescore15PurchaseRequest16setBuyParametersERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(void *, union std_string *);
-extern void *_ZN17storeservicescore15PurchaseRequest3runEv(void *);
-extern struct shared_ptr *_ZNK17storeservicescore15PurchaseRequest8responseEv(void *);
-extern struct shared_ptr *_ZN17storeservicescore16PurchaseResponse5errorEv(void *);
-extern struct std_vector _ZNK17storeservicescore16PurchaseResponse5itemsEv(void *);
-extern struct std_vector _ZNK17storeservicescore12PurchaseItem6assetsEv(void *);
-extern union std_string *_ZNK17storeservicescore13PurchaseAsset3URLEv(void *, void *);
-extern int _ZNK17storeservicescore19StoreErrorCondition9errorCodeEv(void *);
-extern const char *_ZNK17storeservicescore19StoreErrorCondition4whatEv(void *);
-extern struct shared_ptr *_ZNK17storeservicescore20AuthenticateResponse5errorEv(void *);
-extern union std_string *_ZNK17storeservicescore20AuthenticateResponse15customerMessageEv(void *);
+IMPORT_EXTERN void * _ZN17storeservicescore15PurchaseRequestC2ERKNSt6__ndk110shared_ptrINS_14RequestContextEEE(void *, struct shared_ptr *);
+IMPORT_EXTERN void *_ZN17storeservicescore15PurchaseRequest23setProcessDialogActionsEb(void *, int);
+IMPORT_EXTERN void *_ZN17storeservicescore15PurchaseRequest12setURLBagKeyERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(void *, union std_string *);
+IMPORT_EXTERN void *_ZN17storeservicescore15PurchaseRequest16setBuyParametersERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(void *, union std_string *);
+IMPORT_EXTERN void *_ZN17storeservicescore15PurchaseRequest3runEv(void *);
+IMPORT_EXTERN struct shared_ptr *_ZNK17storeservicescore15PurchaseRequest8responseEv(void *);
+IMPORT_EXTERN struct shared_ptr *_ZN17storeservicescore16PurchaseResponse5errorEv(void *);
+IMPORT_EXTERN struct std_vector _ZNK17storeservicescore16PurchaseResponse5itemsEv(void *);
+IMPORT_EXTERN struct std_vector _ZNK17storeservicescore12PurchaseItem6assetsEv(void *);
+IMPORT_EXTERN union std_string *_ZNK17storeservicescore13PurchaseAsset3URLEv(void *, void *);
+IMPORT_EXTERN int _ZNK17storeservicescore19StoreErrorCondition9errorCodeEv(void *);
+IMPORT_EXTERN const char *_ZNK17storeservicescore19StoreErrorCondition4whatEv(void *);
+IMPORT_EXTERN struct shared_ptr *_ZNK17storeservicescore20AuthenticateResponse5errorEv(void *);
+IMPORT_EXTERN union std_string *_ZNK17storeservicescore20AuthenticateResponse15customerMessageEv(void *);
 
-extern void *_ZN17storeservicescore14RequestContext8fairPlayEv(void *, void *);
-extern struct std_vector _ZN17storeservicescore8FairPlay21getSubscriptionStatusEv(void *);
+IMPORT_EXTERN void *_ZN17storeservicescore14RequestContext8fairPlayEv(void *, void *);
+IMPORT_EXTERN struct std_vector _ZN17storeservicescore8FairPlay21getSubscriptionStatusEv(void *);
 
 
 const char *const android_id = "dc28071e981c439e";

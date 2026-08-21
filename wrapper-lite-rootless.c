@@ -1,7 +1,7 @@
 /*
- * wrapper-rootless.c — Apple Music 解密 wrapper 的宿主层 (免 root 版)
- * 与 wrapper.c 相同, 但用 user namespace (unshare CLONE_NEWUSER|NEWNS|NEWPID)
- * + 写 uid_map/gid_map + deny setgroups, 无需 CAP_SYS_ADMIN 即可 chroot。
+ * wrapper-rootless.c — wrapper-lite 的宿主层 (免 root 版)
+ * 使用 user namespace (unshare CLONE_NEWUSER|NEWNS|NEWPID) + uid_map/gid_map
+ * + deny setgroups, 无需 CAP_SYS_ADMIN 即可 chroot 并执行 /system/bin/lite。
  * 适用于无特权容器 / WSL 等环境。
  */
 #define _GNU_SOURCE
@@ -18,10 +18,8 @@
 #include <string.h>
 #include <fcntl.h>
 
-#include "cmdline.h"
 
 pid_t child_proc = -1;
-struct gengetopt_args_info args_info;
 
 static void intHan(int signum) {
     if (child_proc != -1) {
@@ -69,7 +67,16 @@ static int setup_unprivileged_namespaces() {
 }
 
 int main(int argc, char *argv[], char *envp[]) {
-    cmdline_parser(argc, argv, &args_info);
+    /* wrapper-lite is the only payload.  It has its own long-option parser;
+       here we only need to know the base directory before execve. */
+    const char *exec_path = "/system/bin/lite";
+    const char *base_dir_for_mkdir = "data";
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--base-dir") == 0 && i + 1 < argc) {
+            base_dir_for_mkdir = argv[++i];
+        }
+    }
+
     if (signal(SIGINT, intHan) == SIG_ERR) {
         perror("signal");
         return 1;
@@ -127,21 +134,20 @@ int main(int argc, char *argv[], char *envp[]) {
         return 1;
     }
 
-    chmod("/system/bin/linker64", 0755);
-    chmod("/system/bin/main", 0755);
+    chmod(exec_path, 0755);
 
-    if (mkdir(args_info.base_dir_arg, 0777) != 0 && errno != EEXIST) {
+    if (mkdir(base_dir_for_mkdir, 0777) != 0 && errno != EEXIST) {
         perror("mkdir base_dir_arg failed");
-    } 
-    
+    }
+
     char db_path[512];
-    snprintf(db_path, sizeof(db_path), "%s/mpl_db", args_info.base_dir_arg);
+    snprintf(db_path, sizeof(db_path), "%s/mpl_db", base_dir_for_mkdir);
     if (mkdir(db_path, 0777) != 0 && errno != EEXIST) {
         perror("mkdir mpl_db failed");
     }
 
-    execve("/system/bin/main", argv, envp);
-    
+    execve(exec_path, argv, envp);
+
     perror("execve");
     return 1;
 }

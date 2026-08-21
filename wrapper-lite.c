@@ -2,7 +2,7 @@
  * wrapper.c — Apple Music 解密 wrapper 的宿主层 (root 特权版)
  * 流程: 解析命令行 → bind-mount rootfs/dev/urandom → chdir+chroot ./rootfs
  *   → 若有 CAP_SYS_ADMIN 则 unshare(CLONE_NEWPID) → fork 子进程
- *   → mount proc, 建 base_dir/mpl_db → execve("/system/bin/main")。
+ *   → mount proc, 建 base_dir/mpl_db → execve("/system/bin/lite")。
  * main 在 chroot 内以 Android 环境运行, 提供 10020/20020/30020/40020 四个服务。
  * 免 root 版见 wrapper-rootless.c。
  */
@@ -109,7 +109,7 @@ int main(int argc, char *argv[], char *envp[]) {
     }
 
     chmod("/system/bin/linker64", 0755);
-    chmod("/system/bin/main", 0755);
+    chmod("/system/bin/lite", 0755);
 
     if (has_cap_sys_admin()) {
         if (unshare(CLONE_NEWPID)) {
@@ -144,7 +144,7 @@ int main(int argc, char *argv[], char *envp[]) {
         perror("mkdir mpl_db failed");
     }
 
-    execve("/system/bin/main", argv, envp);
+    execve("/system/bin/lite", argv, envp);
     
     perror("execve");
     return 1;

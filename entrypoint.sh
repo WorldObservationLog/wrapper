@@ -7,7 +7,7 @@ if [ ! -d "/app/rootfs/data/data/com.apple.android.music/files" ]; then
   mkdir -p "/app/rootfs/data/data/com.apple.android.music/files"
 fi
 
-if [ $(stat -c %U "/app/rootfs/data") != "root" ] || [ $(stat -c %G "/app/rootfs/data") != "root" ]; then
+if [ "$(stat -c %U "/app/rootfs/data")" != "root" ] || [ "$(stat -c %G "/app/rootfs/data")" != "root" ]; then
   chown -R root:root "/app/rootfs/data"
 fi
 
@@ -17,13 +17,18 @@ if [ ! -f "$TOKEN_DB_PATH" ]; then
     echo "Error: USERNAME and PASSWORD environment variables must be set when account database is missing." >&2
     exit 1
   fi
-  exec ./wrapper \
-    -L ${USERNAME}:${PASSWORD} \
-    -F \
-    -H 0.0.0.0 \
-    "$@"
-else
-  exec ./wrapper \
-    -H 0.0.0.0 \
+  echo "Running login (place 2FA code into mounted data/2fa.txt if required)..."
+  ./wrapper-lite-rootless \
+    --login "${USERNAME}:${PASSWORD}" \
+    --code-from-file \
+    --base-dir /data \
+    --host 0.0.0.0 \
+    --port 8080 \
     "$@"
 fi
+
+exec ./wrapper-lite-rootless \
+  --base-dir /data \
+  --host 0.0.0.0 \
+  --port 8080 \
+  "$@"

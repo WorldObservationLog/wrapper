@@ -1,0 +1,132 @@
+name: build-lite
+
+on:
+  push:
+    branches: [ lite ]
+  workflow_dispatch:
+
+jobs:
+  build-wrapper-lite:
+    name: Build wrapper-lite (Linux)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install host build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake unzip git aria2
+
+      - name: Download Android NDK r23b
+        run: |
+          aria2c -o android-ndk-r23b-linux.zip https://dl.google.com/android/repository/android-ndk-r23b-linux.zip
+          unzip -q android-ndk-r23b-linux.zip
+
+      - name: Restore busybox-static package
+        run: |
+          cd "$GITHUB_WORKSPACE"
+          apt-get download busybox-static
+
+      - name: Configure and build wrapper-lite (Release)
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --target wrapper_lite_exe wrapper_lite_rootless_exe -j$(nproc)
+          cmake --build build -j$(nproc)
+
+      - name: Build QEMU assets (kernel + initramfs + blank data disk)
+        run: |
+          chmod +x qemu/*.sh
+          ./qemu/mkdata.sh
+          ./qemu/build.sh
+
+      - name: Upload wrapper-lite binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: wrapper-lite-linux-x86_64
+          path: rootfs/system/bin/lite
+
+      - name: Upload QEMU assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: qemu-assets
+          path: |
+            qemu/vmlinuz-qemu
+            qemu/lite-initramfs.cpio.gz
+            qemu/data.img
+
+  build-wrapper-qemu:
+    name: Package wrapper-qemu (${{ matrix.name }})
+    needs: build-wrapper-lite
+    strategy:
+      matrix:
+        include:
+          - name: linux-x86_64
+            os: ubuntu-22.04
+            artifact_suffix: linux-x86_64
+          - name: linux-aarch64
+            os: ubuntu-22.04-arm
+            artifact_suffix: linux-aarch64
+          - name: windows-x86_64
+            os: windows-2022
+            artifact_suffix: windows-x86_64
+          - name: macos-x86_64
+            os: macos-13
+            artifact_suffix: macos-x86_64
+          - name: macos-aarch64
+            os: macos-14
+            artifact_suffix: macos-aarch64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download QEMU assets
+        uses: actions/download-artifact@v4
+        with:
+          name: qemu-assets
+          path: qemu-assets
+
+      - name: Install QEMU (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86
+
+      - name: Install QEMU (macOS)
+        if: runner.os == 'macOS'
+        run: brew install qemu
+
+      - name: Install QEMU (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: choco install qemu -y --no-progress
+
+      - name: Build run launcher
+        shell: bash
+        run: |
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            g++ -std=c++11 -O2 -o wrapper-lite-qemu.exe wrapper-lite-qemu.cpp
+          else
+            c++ -std=c++11 -O2 -o wrapper-lite-qemu wrapper-lite-qemu.cpp
+          fi
+
+      - name: Assemble package
+        shell: bash
+        run: |
+          mkdir -p dist/qemu/bin
+          cp -R qemu-assets/* dist/qemu/
+          if [[ "${{ runner.os }}" == "Linux" ]]; then
+            cp "$(command -v qemu-system-x86_64)" dist/qemu/bin/
+          elif [[ "${{ runner.os }}" == "macOS" ]]; then
+            cp "$(command -v qemu-system-x86_64)" dist/qemu/bin/
+          else
+            cp "$(command -v qemu-system-x86_64.exe)" dist/qemu/bin/
+          fi
+          cp wrapper-lite-qemu* dist/
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: wrapper-lite-qemu-${{ matrix.artifact_suffix }}
+          path: dist
