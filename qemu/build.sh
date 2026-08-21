@@ -34,7 +34,7 @@ echo "[build] kernel: ${KERNEL_SRC_PATH} (${KERNEL_VER})"
 if [[ ! -d "/lib/modules/${KERNEL_VER}/kernel" ]]; then
     echo "[build] modules for ${KERNEL_VER} missing, trying to install..."
     sudo apt-get update || true
-    sudo apt-get install -y "linux-modules-${KERNEL_VER}" || true
+    sudo apt-get install -y "linux-modules-${KERNEL_VER}" "linux-modules-extra-${KERNEL_VER}" || true
 fi
 
 echo "[build] extracting busybox..."
@@ -56,6 +56,9 @@ fi
 
 for mod in qemu_fw_cfg virtio virtio_ring virtio_pci_modern_dev virtio_pci_legacy_dev virtio_pci virtio_blk crc16 crc32c_generic jbd2 mbcache ext4; do
     MOD_SRC="$(find "/lib/modules/${KERNEL_VER}/kernel" -name "${mod}.ko" 2>/dev/null | head -1 || true)"
+    if [[ -z "$MOD_SRC" || ! -f "$MOD_SRC" ]]; then
+        MOD_SRC="$(find /lib/modules -name "${mod}.ko" 2>/dev/null | head -1 || true)"
+    fi
     if [[ -n "$MOD_SRC" && -f "$MOD_SRC" ]]; then
         cp -f "$MOD_SRC" "$STAGE/${mod}.ko"
     else

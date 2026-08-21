@@ -10,7 +10,7 @@ jobs:
     name: Build wrapper-lite (Linux)
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install host build tools
         run: |
@@ -33,29 +33,32 @@ jobs:
           cmake --build build --target wrapper_lite_exe wrapper_lite_rootless_exe -j$(nproc)
           cmake --build build -j$(nproc)
 
-      - name: Build QEMU assets (kernel + initramfs + blank data disk)
+      - name: Build QEMU assets
         run: |
           chmod +x qemu/*.sh
           ./qemu/mkdata.sh
           ./qemu/build.sh
 
-      - name: Upload wrapper-lite binary
-        uses: actions/upload-artifact@v4
+      - name: Package native release
+        shell: bash
+        run: |
+          mkdir -p dist-native/qemu-assets
+          cp wrapper-lite dist-native/
+          cp wrapper-lite-rootless dist-native/
+          cp wrapper-lite-qemu.cpp dist-native/
+          cp -R rootfs dist-native/
+          cp qemu/vmlinuz-lite-qemu dist-native/qemu-assets/
+          cp qemu/lite-initramfs.cpio.gz dist-native/qemu-assets/
+          cp qemu/data.img dist-native/qemu-assets/
+
+      - name: Upload wrapper-lite native package
+        uses: actions/upload-artifact@v5
         with:
           name: wrapper-lite-linux-x86_64
-          path: rootfs/system/bin/lite
+          path: dist-native
 
-      - name: Upload QEMU assets
-        uses: actions/upload-artifact@v4
-        with:
-          name: qemu-assets
-          path: |
-            qemu/vmlinuz-qemu
-            qemu/lite-initramfs.cpio.gz
-            qemu/data.img
-
-  build-wrapper-qemu:
-    name: Package wrapper-qemu (${{ matrix.name }})
+  build-wrapper-lite-qemu:
+    name: Package wrapper-lite-qemu (${{ matrix.name }})
     needs: build-wrapper-lite
     strategy:
       matrix:
@@ -79,13 +82,13 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - name: Download QEMU assets
-        uses: actions/download-artifact@v4
+      - name: Download native package
+        uses: actions/download-artifact@v5
         with:
-          name: qemu-assets
-          path: qemu-assets
+          name: wrapper-lite-linux-x86_64
+          path: native
 
       - name: Install QEMU (Linux)
         if: runner.os == 'Linux'
@@ -102,7 +105,7 @@ jobs:
         shell: pwsh
         run: choco install qemu -y --no-progress
 
-      - name: Build run launcher
+      - name: Build launcher
         shell: bash
         run: |
           if [[ "${{ runner.os }}" == "Windows" ]]; then
@@ -111,22 +114,38 @@ jobs:
             c++ -std=c++11 -O2 -o wrapper-lite-qemu wrapper-lite-qemu.cpp
           fi
 
-      - name: Assemble package
+      - name: Assemble QEMU package
         shell: bash
         run: |
           mkdir -p dist/qemu/bin
-          cp -R qemu-assets/* dist/qemu/
-          if [[ "${{ runner.os }}" == "Linux" ]]; then
-            cp "$(command -v qemu-system-x86_64)" dist/qemu/bin/
-          elif [[ "${{ runner.os }}" == "macOS" ]]; then
-            cp "$(command -v qemu-system-x86_64)" dist/qemu/bin/
-          else
-            cp "$(command -v qemu-system-x86_64.exe)" dist/qemu/bin/
-          fi
+          cp -R native/qemu-assets/* dist/qemu/
           cp wrapper-lite-qemu* dist/
 
-      - name: Upload package
-        uses: actions/upload-artifact@v4
+      - name: Copy QEMU binary (Linux/macOS)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          cp "$(command -v qemu-system-x86_64)" dist/qemu/bin/
+
+      - name: Copy QEMU binary (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $q = Get-Command qemu-system-x86_64.exe -ErrorAction SilentlyContinue
+          if ($q) {
+            Copy-Item $q.Source dist\qemu\bin\
+          } else {
+            $candidates = @(
+              "C:\Program Files\qemu\qemu-system-x86_64.exe",
+              "C:\ProgramData\chocolatey\bin\qemu-system-x86_64.exe"
+            )
+            $found = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+            if ($found) { Copy-Item $found dist\qemu\bin\ }
+            else { Write-Error "qemu-system-x86_64.exe not found"; exit 1 }
+          }
+
+      - name: Upload QEMU package
+        uses: actions/upload-artifact@v5
         with:
           name: wrapper-lite-qemu-${{ matrix.artifact_suffix }}
           path: dist
