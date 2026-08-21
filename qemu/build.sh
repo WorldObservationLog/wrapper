@@ -19,7 +19,10 @@ echo "[build] locating kernel..."
 if [[ -n "${KERNEL_SRC:-}" && -f "$KERNEL_SRC" ]]; then
     KERNEL_SRC_PATH="$KERNEL_SRC"
 else
-    KERNEL_SRC_PATH="$(ls -1 /boot/vmlinuz-* 2>/dev/null | sort -V | tail -1 || true)"
+    KERNEL_SRC_PATH="$(find /boot -maxdepth 1 -name 'vmlinuz-*' -readable 2>/dev/null | sort -V | tail -1 || true)"
+    if [[ -z "$KERNEL_SRC_PATH" ]]; then
+        KERNEL_SRC_PATH="$(ls -1 /boot/vmlinuz-* 2>/dev/null | sort -V | tail -1 || true)"
+    fi
 fi
 if [[ -z "$KERNEL_SRC_PATH" || ! -f "$KERNEL_SRC_PATH" ]]; then
     echo "[build] no kernel found; set KERNEL_SRC=/path/to/vmlinuz" >&2
@@ -27,6 +30,12 @@ if [[ -z "$KERNEL_SRC_PATH" || ! -f "$KERNEL_SRC_PATH" ]]; then
 fi
 KERNEL_VER="$(basename "$KERNEL_SRC_PATH" | sed 's/^vmlinuz-//')"
 echo "[build] kernel: ${KERNEL_SRC_PATH} (${KERNEL_VER})"
+
+if [[ ! -d "/lib/modules/${KERNEL_VER}/kernel" ]]; then
+    echo "[build] modules for ${KERNEL_VER} missing, trying to install..."
+    sudo apt-get update || true
+    sudo apt-get install -y "linux-modules-${KERNEL_VER}" || true
+fi
 
 echo "[build] extracting busybox..."
 dpkg-deb -x "$BUSYBOX_DEB" "$STAGE"
@@ -64,7 +73,12 @@ else
     (cd "$STAGE" && find . | cpio -o -H newc --quiet | gzip -9 > "$OUT_FILE")
 fi
 
-cp -f "$KERNEL_SRC_PATH" "$KERNEL_FILE"
+if [[ -r "$KERNEL_SRC_PATH" ]]; then
+    cp -f "$KERNEL_SRC_PATH" "$KERNEL_FILE"
+else
+    echo "[build] kernel not readable, copying with sudo..."
+    sudo cp -f "$KERNEL_SRC_PATH" "$KERNEL_FILE"
+fi
 
 if [[ ! -f "${OUT_DIR}/data.img" ]]; then
     echo "[build] data disk missing, creating..."
