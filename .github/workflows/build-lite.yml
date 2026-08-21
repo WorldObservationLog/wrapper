@@ -10,7 +10,7 @@ jobs:
     name: Build wrapper-lite (Linux)
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Install host build tools
         run: |
@@ -42,20 +42,34 @@ jobs:
       - name: Package native release
         shell: bash
         run: |
-          mkdir -p dist-native/qemu-assets
+          mkdir -p dist-native
           cp wrapper-lite dist-native/
           cp wrapper-lite-rootless dist-native/
-          cp wrapper-lite-qemu.cpp dist-native/
           cp -R rootfs dist-native/
-          cp qemu/vmlinuz-lite-qemu dist-native/qemu-assets/
-          cp qemu/lite-initramfs.cpio.gz dist-native/qemu-assets/
-          cp qemu/data.img dist-native/qemu-assets/
+          cp README.md dist-native/
+          cp LICENSE dist-native/
 
       - name: Upload wrapper-lite native package
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: wrapper-lite-linux-x86_64
           path: dist-native
+
+      - name: Package QEMU assets
+        shell: bash
+        run: |
+          mkdir -p dist-qemu-assets
+          cp qemu/vmlinuz-lite-qemu dist-qemu-assets/
+          cp qemu/lite-initramfs.cpio.gz dist-qemu-assets/
+          cp qemu/data.img dist-qemu-assets/
+          cp README.md dist-qemu-assets/
+          cp LICENSE dist-qemu-assets/
+
+      - name: Upload QEMU assets
+        uses: actions/upload-artifact@v7
+        with:
+          name: qemu-assets
+          path: dist-qemu-assets
 
   build-wrapper-lite-qemu:
     name: Package wrapper-lite-qemu (${{ matrix.name }})
@@ -82,13 +96,13 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
-      - name: Download native package
-        uses: actions/download-artifact@v5
+      - name: Download QEMU assets
+        uses: actions/download-artifact@v8
         with:
-          name: wrapper-lite-linux-x86_64
-          path: native
+          name: qemu-assets
+          path: qemu-assets
 
       - name: Install QEMU (Linux)
         if: runner.os == 'Linux'
@@ -118,7 +132,9 @@ jobs:
         shell: bash
         run: |
           mkdir -p dist/qemu/bin
-          cp -R native/qemu-assets/* dist/qemu/
+          cp -R qemu-assets/* dist/qemu/
+          cp README.md dist/
+          cp LICENSE dist/
           cp wrapper-lite-qemu* dist/
 
       - name: Copy QEMU binary (Linux/macOS)
@@ -145,7 +161,7 @@ jobs:
           }
 
       - name: Upload QEMU package
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: wrapper-lite-qemu-${{ matrix.artifact_suffix }}
           path: dist
