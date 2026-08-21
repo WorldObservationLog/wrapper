@@ -2,7 +2,12 @@
 set -euo pipefail
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 ROOTFS_DIR="${REPO_DIR}/rootfs"
-BUSYBOX_DEB="${REPO_DIR}/busybox-static_1%3a1.35.0-4+deb12u1+b1_amd64.deb"
+BUSYBOX_DEB="$(ls -1 "${REPO_DIR}"/busybox-static_*_amd64.deb 2>/dev/null | head -1 || true)"
+if [[ -z "$BUSYBOX_DEB" && "$(command -v apt-get || true)" != "" ]]; then
+    echo "[build] busybox-static deb not found, downloading..."
+    (cd "$REPO_DIR" && apt-get download busybox-static >/dev/null 2>&1 || true)
+    BUSYBOX_DEB="$(ls -1 "${REPO_DIR}"/busybox-static_*_amd64.deb 2>/dev/null | head -1 || true)"
+fi
 OUT_DIR="${REPO_DIR}/qemu"
 OUT_FILE="${OUT_DIR}/lite-initramfs.cpio.gz"
 KERNEL_FILE="${OUT_DIR}/vmlinuz-lite-qemu"
