@@ -82,6 +82,7 @@ else
     echo "[build] kernel not readable, copying with sudo..."
     sudo cp -f "$KERNEL_SRC_PATH" "$KERNEL_FILE"
 fi
+sudo chmod 0644 "$KERNEL_FILE" 2>/dev/null || chmod 0644 "$KERNEL_FILE"
 
 if [[ ! -f "${OUT_DIR}/data.img" ]]; then
     echo "[build] data disk missing, creating..."
