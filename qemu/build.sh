@@ -31,8 +31,16 @@ fi
 KERNEL_VER="$(basename "$KERNEL_SRC_PATH" | sed 's/^vmlinuz-//')"
 echo "[build] kernel: ${KERNEL_SRC_PATH} (${KERNEL_VER})"
 
-if [[ ! -d "/lib/modules/${KERNEL_VER}/kernel" ]]; then
-    echo "[build] modules for ${KERNEL_VER} missing, trying to install..."
+REQUIRED_MODS=(qemu_fw_cfg virtio virtio_ring virtio_pci_modern_dev virtio_pci_legacy_dev virtio_pci virtio_blk crc16 crc32c_generic jbd2 mbcache ext4 e1000)
+NEED_MODULES=0
+for m in "${REQUIRED_MODS[@]}"; do
+    if ! find "/lib/modules/${KERNEL_VER}/kernel" -name "${m}.ko" 2>/dev/null | grep -q .; then
+        NEED_MODULES=1
+        break
+    fi
+done
+if [[ "$NEED_MODULES" == "1" ]]; then
+    echo "[build] some modules for ${KERNEL_VER} are missing, installing..."
     sudo apt-get update || true
     sudo apt-get install -y "linux-modules-${KERNEL_VER}" "linux-modules-extra-${KERNEL_VER}" || true
 fi
@@ -61,6 +69,8 @@ for mod in qemu_fw_cfg virtio virtio_ring virtio_pci_modern_dev virtio_pci_legac
     fi
     if [[ -n "$MOD_SRC" && -f "$MOD_SRC" ]]; then
         cp -f "$MOD_SRC" "$STAGE/${mod}.ko"
+    elif grep -q "/${mod}.ko" "/lib/modules/${KERNEL_VER}/modules.builtin" 2>/dev/null; then
+        echo "[build] ${mod}.ko is built-in, skipping"
     else
         echo "[build] WARNING: ${mod}.ko not found" >&2
     fi
