@@ -178,17 +178,12 @@ void install_hooks() {
     static int installed = 0;
     if (installed) return;
     installed = 1;
-    DobbyHook((void*)&_ZN13mediaplatform26DebugLogEnabledForPriorityENS_11LogPriorityE,
-              (void*)&allDebug, (void**)&orig_debug_log_enabled);
-    DobbyHook((void*)&__android_log_print, (void*)&log_print_hook, (void**)&orig_log_print);
-    DobbyHook((void*)&__android_log_write, (void*)&log_write_hook, (void**)&orig_log_write);
-#ifdef LITE_RELEASE
-    if (g_ssl_verify_disabled) {
-        DobbyHook((void*)&curl_easy_setopt, (void*)&curl_easy_setopt_hook, (void**)&orig_curl_easy_setopt);
-    }
-#else
-    DobbyHook((void*)&curl_easy_setopt, (void*)&curl_easy_setopt_hook, (void**)&orig_curl_easy_setopt);
-#endif
+    (void)allDebug;
+    (void)orig_debug_log_enabled;
+    (void)orig_log_print;
+    (void)orig_log_write;
+    (void)orig_curl_easy_setopt;
+    LOG_DEBUG("debug hooks skipped for QEMU TCG stability");
     LOG_DEBUG("debug hooks installed");
 }
 

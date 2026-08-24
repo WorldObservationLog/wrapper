@@ -7,6 +7,8 @@
 #include <fstream>
 #include <mutex>
 #include <sys/time.h>
+#include <unistd.h>
+#include <sys/wait.h>
 
 static std::string read_token_file(const std::string& path) {
     std::ifstream f(path);
@@ -70,14 +72,15 @@ static char* get_dev_token_impl() {
     void** data_ptr_location = (void**)((char*)http_message_obj + 48);
     void* data_ptr = *data_ptr_location;
     char* respBody = _ZNK13mediaplatform4Data5bytesEv(data_ptr);
-    cJSON* json = cJSON_Parse(respBody);
-    if (!json) return nullptr;
-    cJSON* token_obj = cJSON_GetObjectItemCaseSensitive(json, "token");
-    char* token = cJSON_GetStringValue(token_obj);
-    if (!token) { cJSON_Delete(json); return nullptr; }
-    char* result = strdup(token);
-    cJSON_Delete(json);
-    return result;
+    if (!respBody) return nullptr;
+    std::string respBodyStr(respBody, strnlen(respBody, 4096));
+    const std::string key = "\"token\":\"";
+    size_t ks = respBodyStr.find(key);
+    if (ks == std::string::npos) return nullptr;
+    ks += key.size();
+    size_t ke = respBodyStr.find('"', ks);
+    if (ke == std::string::npos) return nullptr;
+    return strdup(respBodyStr.substr(ks, ke - ks).c_str());
 }
 
 static char* get_music_user_token_impl(const char* authToken) {
@@ -138,22 +141,18 @@ static char* get_music_user_token_impl(const char* authToken) {
     void** data_ptr_location = (void**)((char*)http_message_obj + 48);
     void* data_ptr = *data_ptr_location;
     char* respBody = _ZNK13mediaplatform4Data5bytesEv(data_ptr);
-    cJSON* json = cJSON_Parse(respBody);
-    if (!json) return nullptr;
-    cJSON* token_obj = cJSON_GetObjectItemCaseSensitive(json, "music_token");
-    char* token = cJSON_GetStringValue(token_obj);
-    if (!token) {
-        const char* err_desc = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(json, "error_description"));
-        const char* err_code = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(json, "error"));
-        LOG_WARN("createMusicToken failed: %s (%s)",
-                 err_desc ? err_desc : "unknown error",
-                 err_code ? err_code : "?");
-        cJSON_Delete(json);
+    if (!respBody) return nullptr;
+    std::string respBodyStr(respBody, strnlen(respBody, 4096));
+    const std::string key = "\"music_token\":\"";
+    size_t ks = respBodyStr.find(key);
+    if (ks == std::string::npos) {
+        LOG_WARN("createMusicToken failed: no music_token in response");
         return nullptr;
     }
-    char* result = strdup(token);
-    cJSON_Delete(json);
-    return result;
+    ks += key.size();
+    size_t ke = respBodyStr.find('"', ks);
+    if (ke == std::string::npos) return nullptr;
+    return strdup(respBodyStr.substr(ks, ke - ks).c_str());
 }
 
 static char* get_account_storefront_id_impl() {
@@ -210,7 +209,9 @@ static bool write_token_file(const std::string& path, const std::string& content
 bool refresh_tokens(std::string& out_storefront, std::string& out_dev_token, std::string& out_music_token) {
     std::lock_guard<std::mutex> lock(g_token_mutex);
 
+    LOG_INFO("refresh_tokens: fetching storefront");
     char* storefront = get_account_storefront_id_impl();
+    LOG_INFO("refresh_tokens: storefront fetched");
     if (!storefront) {
         LOG_WARN("failed to get storefront ID");
         return false;
@@ -218,19 +219,24 @@ bool refresh_tokens(std::string& out_storefront, std::string& out_dev_token, std
     std::string sf(storefront);
     free(storefront);
 
+    LOG_INFO("refresh_tokens: fetching dev token");
     char* devToken = get_dev_token_impl();
+    LOG_INFO("refresh_tokens: dev token fetched");
     if (!devToken) {
         LOG_WARN("failed to get dev token");
         return false;
     }
-    std::string dev(devToken);
-    free(devToken);
+    write_token_file(std::string(g_base_dir) + "/DEV_TOKEN", std::string(devToken));
+    LOG_INFO("refresh_tokens: dev token file written");
 
-    char* musicToken = get_music_user_token_impl(dev.c_str());
+    LOG_INFO("refresh_tokens: fetching music token");
+    char* musicToken = get_music_user_token_impl(devToken);
+    LOG_INFO("refresh_tokens: music token fetched");
     std::string music;
     if (musicToken) {
         music = musicToken;
         free(musicToken);
+        LOG_INFO("refresh_tokens: music freed");
     } else {
         music = read_token_file(std::string(g_base_dir) + "/MUSIC_TOKEN");
         if (!music.empty()) {
@@ -244,11 +250,18 @@ bool refresh_tokens(std::string& out_storefront, std::string& out_dev_token, std
     }
 
     write_token_file(std::string(g_base_dir) + "/STOREFRONT_ID", sf);
+    LOG_INFO("refresh_tokens: storefront file written");
     write_token_file(std::string(g_base_dir) + "/MUSIC_TOKEN", music);
+    LOG_INFO("refresh_tokens: music file written");
 
-    out_storefront = sf;
-    out_dev_token = dev;
-    out_music_token = music;
+    std::string freshDev = read_token_file(std::string(g_base_dir) + "/DEV_TOKEN");
+    LOG_INFO("refresh_tokens: assigning out_storefront");
+    out_storefront = std::move(sf);
+    LOG_INFO("refresh_tokens: assigning out_dev_token");
+    out_dev_token = std::move(freshDev);
+    LOG_INFO("refresh_tokens: assigning out_music_token");
+    out_music_token = std::move(music);
+    LOG_INFO("refresh_tokens: outputs assigned");
     return true;
 }
 

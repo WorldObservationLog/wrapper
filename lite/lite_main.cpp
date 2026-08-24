@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <algorithm>
 #include <fstream>
 #include <sstream>
 #include <vector>
@@ -12,6 +13,8 @@
 #include <cctype>
 #include <thread>
 #include <atomic>
+#include <unistd.h>
+#include <sys/wait.h>
 #include <signal.h>
 #include <pthread.h>
 #include "cJSON.h"
@@ -401,12 +404,18 @@ int main(int argc, char* argv[]) {
         std::ifstream af(args_file);
         std::string line;
         while (std::getline(af, line)) {
+            if (!line.empty() && (line.back() == '\r')) line.pop_back();
+                        line.erase(std::remove_if(line.begin(), line.end(), [](char c){ return c == 0; }), line.end());
+            if (line.empty()) continue;
+            size_t b = line.find_first_not_of(" 	");
+            if (b == std::string::npos) continue;
+            size_t e = line.find_last_not_of(" 	");
+            line = line.substr(b, e - b + 1);
             if (!line.empty()) cmdline_args.push_back(line);
         }
     } else {
         for (int i = 1; i < argc; i++) cmdline_args.push_back(argv[i]);
     }
-
     for (size_t i = 1; i < cmdline_args.size(); i++) {
         std::string arg = cmdline_args[i];
         if (arg == "--host" && i + 1 < cmdline_args.size()) g_host = cmdline_args[++i];
@@ -453,16 +462,48 @@ int main(int argc, char* argv[]) {
         set_credentials(username.c_str(), password.c_str());
 
         LOG_INFO("wrapper-lite login-only mode");
-        install_hooks();
-        set_device_info(g_device_info.c_str());
-        g_reqCtx = init_ctx();
-        if (!login(g_reqCtx)) {
-            LOG_ERROR("login failed");
+
+        /* Run the whole login + native token refresh in a child process.
+         * On Termux + QEMU TCG the Android URLRequest destructors corrupt the
+         * heap; isolating login in a child keeps this process's heap intact. */
+        pid_t pid = fork();
+        if (pid < 0) {
+            LOG_ERROR("fork failed");
             return 1;
         }
-        LOG_INFO("login successful");
+        if (pid == 0) {
+            install_hooks();
+            set_device_info(g_device_info.c_str());
+            g_reqCtx = init_ctx();
+            if (!login(g_reqCtx)) {
+                LOG_ERROR("login failed");
+                _exit(1);
+            }
+            LOG_INFO("login successful");
+            if (!cache_login_tokens()) {
+                LOG_ERROR("failed to cache account info");
+                _exit(1);
+            }
+            _exit(0);
+        }
 
-        if (!cache_login_tokens()) {
+        int status = 0;
+        waitpid(pid, &status, 0);
+
+        /* Read token files (written by the child) into this clean process. */
+        auto readFile = [](const std::string& path) {
+            std::ifstream f(path);
+            if (!f) return std::string();
+            std::string c((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+            while (!c.empty() && (c.back() == ' ' || c.back() == 10 || c.back() == 13)) c.pop_back();
+            return c;
+        };
+        g_tokens.base_dir = g_base_dir;
+        g_tokens.storefront_id = readFile(std::string(g_base_dir) + "/STOREFRONT_ID");
+        g_tokens.dev_token = readFile(std::string(g_base_dir) + "/DEV_TOKEN");
+        g_tokens.music_token = readFile(std::string(g_base_dir) + "/MUSIC_TOKEN");
+        if (g_tokens.storefront_id.empty()) g_tokens.storefront_id = "us";
+        if (g_tokens.dev_token.empty() || g_tokens.music_token.empty()) {
             LOG_ERROR("failed to cache account info");
             return 1;
         }

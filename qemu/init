@@ -35,12 +35,24 @@ done
 /bin/busybox mount -t ext4 /dev/vda /data 2>/dev/null || echo "[init] data disk mount failed"
 
 # Host-provided lite args, one argument per line.
+/bin/busybox rm -f /data/.lite-qemu-args
 /bin/busybox insmod /qemu_fw_cfg.ko 2>/dev/null || true
 if [ -f /sys/firmware/qemu_fw_cfg/by_name/lite_args/raw ]; then
     /bin/busybox cat /sys/firmware/qemu_fw_cfg/by_name/lite_args/raw > /data/.lite-qemu-args
 fi
 
-/bin/busybox chmod +x /system/bin/lite 2>/dev/null || true
+# Fallback: kernel cmdline base64 (only if base64 applet is available)
+if [ ! -s /data/.lite-qemu-args ] && /bin/busybox base64 --help >/dev/null 2>&1; then
+    for w in $(cat /proc/cmdline); do
+        case "$w" in
+            lite_args_b64=*)
+                echo "${w#lite_args_b64=}" | /bin/busybox base64 -d > /data/.lite-qemu-args
+            ;;
+        esac
+    done
+fi
+
+/bin/busybox chmod +x /system/bin/lite /system/bin/linker64 2>/dev/null || true
 
 if [ -s /data/.lite-qemu-args ]; then
     echo "[init] wrapper-lite QEMU guest (custom args from file)"
