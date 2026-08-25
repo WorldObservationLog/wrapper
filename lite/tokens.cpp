@@ -209,9 +209,7 @@ static bool write_token_file(const std::string& path, const std::string& content
 bool refresh_tokens(std::string& out_storefront, std::string& out_dev_token, std::string& out_music_token) {
     std::lock_guard<std::mutex> lock(g_token_mutex);
 
-    LOG_INFO("refresh_tokens: fetching storefront");
     char* storefront = get_account_storefront_id_impl();
-    LOG_INFO("refresh_tokens: storefront fetched");
     if (!storefront) {
         LOG_WARN("failed to get storefront ID");
         return false;
@@ -219,24 +217,18 @@ bool refresh_tokens(std::string& out_storefront, std::string& out_dev_token, std
     std::string sf(storefront);
     free(storefront);
 
-    LOG_INFO("refresh_tokens: fetching dev token");
     char* devToken = get_dev_token_impl();
-    LOG_INFO("refresh_tokens: dev token fetched");
     if (!devToken) {
         LOG_WARN("failed to get dev token");
         return false;
     }
     write_token_file(std::string(g_base_dir) + "/DEV_TOKEN", std::string(devToken));
-    LOG_INFO("refresh_tokens: dev token file written");
 
-    LOG_INFO("refresh_tokens: fetching music token");
     char* musicToken = get_music_user_token_impl(devToken);
-    LOG_INFO("refresh_tokens: music token fetched");
     std::string music;
     if (musicToken) {
         music = musicToken;
         free(musicToken);
-        LOG_INFO("refresh_tokens: music freed");
     } else {
         music = read_token_file(std::string(g_base_dir) + "/MUSIC_TOKEN");
         if (!music.empty()) {
@@ -250,18 +242,12 @@ bool refresh_tokens(std::string& out_storefront, std::string& out_dev_token, std
     }
 
     write_token_file(std::string(g_base_dir) + "/STOREFRONT_ID", sf);
-    LOG_INFO("refresh_tokens: storefront file written");
     write_token_file(std::string(g_base_dir) + "/MUSIC_TOKEN", music);
-    LOG_INFO("refresh_tokens: music file written");
 
     std::string freshDev = read_token_file(std::string(g_base_dir) + "/DEV_TOKEN");
-    LOG_INFO("refresh_tokens: assigning out_storefront");
     out_storefront = std::move(sf);
-    LOG_INFO("refresh_tokens: assigning out_dev_token");
     out_dev_token = std::move(freshDev);
-    LOG_INFO("refresh_tokens: assigning out_music_token");
     out_music_token = std::move(music);
-    LOG_INFO("refresh_tokens: outputs assigned");
     return true;
 }
 
