@@ -149,15 +149,15 @@ jobs:
           if ($q) { $qemuDir = Split-Path $q.Source }
           if (-not $qemuDir) {
             $candidates = @(
-              "C:\Program Files\qemu",
-              "C:\ProgramData\chocolateyin"
+              'C:/Program Files/qemu',
+              'C:/ProgramData/chocolatey/bin'
             )
-            $qemuDir = $candidates | Where-Object { Test-Path "$_\qemu-system-x86_64.exe" } | Select-Object -First 1
+            $qemuDir = $candidates | Where-Object { Test-Path (Join-Path $_ 'qemu-system-x86_64.exe') } | Select-Object -First 1
           }
-          if (-not $qemuDir) { Write-Error "qemu-system-x86_64.exe not found"; exit 1 }
-          New-Item -ItemType Directory -Force -Path dist\qemuin | Out-Null
-          Copy-Item "$qemuDir\*" dist\qemuin\ -Recurse -Force
-
+          if (-not $qemuDir) { Write-Error 'qemu-system-x86_64.exe not found'; exit 1 }
+          $dst = Join-Path (Join-Path 'dist' 'qemu') 'bin'
+          New-Item -ItemType Directory -Force -Path $dst | Out-Null
+          Copy-Item (Join-Path $qemuDir '*') $dst -Recurse -Force
       - name: Upload QEMU package
         uses: actions/upload-artifact@v7
         with:
