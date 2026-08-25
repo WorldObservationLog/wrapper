@@ -113,7 +113,7 @@ if(BUILD_HOST_LAUNCHERS)
         PREFIX ${CMAKE_BINARY_DIR}/wrapper_build
         SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}
         CONFIGURE_COMMAND ""
-        BUILD_COMMAND ${C_COMPILER} -O3 -Wall -s -o wrapper-lite ${WRAPPER_SOURCE} ${CMAKE_CURRENT_SOURCE_DIR}/cmdline.c
+        BUILD_COMMAND ${C_COMPILER} -O3 -Wall -s -o wrapper-lite ${WRAPPER_SOURCE}
         BUILD_IN_SOURCE 1
         INSTALL_COMMAND ""
         DEPENDS lite
