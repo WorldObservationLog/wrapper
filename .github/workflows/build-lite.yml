@@ -178,6 +178,9 @@ jobs:
         shell: bash
         run: |
           cp "$(command -v qemu-system-x86_64)" dist/qemu/bin/
+          if [[ "${{ runner.os }}" == "macOS" ]]; then
+            cp -R "$(brew --prefix)/share/qemu/"* dist/qemu/bin/ 2>/dev/null || true
+          fi
 
       - name: Copy QEMU binary (Windows)
         if: runner.os == 'Windows'

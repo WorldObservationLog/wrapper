@@ -118,7 +118,8 @@ static bool canUseKvm() {
 
 static std::string autoAccel() {
 #ifdef __APPLE__
-    return "hvf";
+    /* HVF on Apple Silicon cannot accelerate x86_64 guests; use TCG. */
+    return "tcg";
 #elif defined(_WIN32)
     return "whpx";
 #else
@@ -216,6 +217,10 @@ static std::vector<std::string> buildQemuArgs(const std::string& qemuBin,
                                               const std::string& argsFile) {
     std::vector<std::string> args;
     args.push_back(qemuBin);
+#ifdef __APPLE__
+    args.push_back("-L");
+    args.push_back(dir + "/bin");
+#endif
     args.push_back("-accel");
     if (accel == "whpx") {
         args.push_back("whpx,kernel-irqchip=off");
