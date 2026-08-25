@@ -1,10 +1,9 @@
 /*
- * wrapper.c — Apple Music 解密 wrapper 的宿主层 (root 特权版)
- * 流程: 解析命令行 → bind-mount rootfs/dev/urandom → chdir+chroot ./rootfs
+ * wrapper-lite.c — Apple Music 解密 wrapper-lite 的宿主层 (root 特权版)
+ * 流程: 解析 --base-dir → bind-mount rootfs/dev/urandom → chdir+chroot ./rootfs
  *   → 若有 CAP_SYS_ADMIN 则 unshare(CLONE_NEWPID) → fork 子进程
  *   → mount proc, 建 base_dir/mpl_db → execve("/system/bin/lite")。
- * main 在 chroot 内以 Android 环境运行, 提供 10020/20020/30020/40020 四个服务。
- * 免 root 版见 wrapper-rootless.c。
+ * 参数 (--host/--port/--login/--debug/...) 原样传给 lite。
  */
 #define _GNU_SOURCE
 
@@ -13,18 +12,15 @@
 #include <sched.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <sys/mount.h>
 #include <sys/stat.h>
 #include <sys/sysmacros.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
-#include <string.h>
-#include <sys/mount.h>
-
-#include "cmdline.h"
 
 pid_t child_proc = -1;
-struct gengetopt_args_info args_info;
 #define CAP_SYS_ADMIN_IDX 21
 #define CAP_SYS_ADMIN_BIT (1ULL << CAP_SYS_ADMIN_IDX)
 
@@ -34,44 +30,32 @@ static void intHan(int signum) {
     }
 }
 
-int has_cap_sys_admin() {
-    FILE *fp;
+static int has_cap_sys_admin(void) {
+    FILE *fp = fopen("/proc/self/status", "r");
+    if (!fp) return 0;
     char line[256];
-    unsigned long long cap_eff = 0;
-    int found_cap_eff = 0;
-
-    fp = fopen("/proc/self/status", "r");
-    if (fp == NULL) {
-        return 0;
-    }
-
-    while (fgets(line, sizeof(line), fp) != NULL) {
+    int found = 0;
+    while (fgets(line, sizeof(line), fp)) {
         if (strncmp(line, "CapEff:", 7) == 0) {
-            char *value_str = line + 7;
-            while (*value_str == '\t' || *value_str == ' ') {
-                value_str++;
-            }
-            cap_eff = strtoull(value_str, NULL, 16);
-            found_cap_eff = 1;
+            char *v = line + 7;
+            while (*v == ' ' || *v == '\t') v++;
+            if (strtoull(v, NULL, 16) & CAP_SYS_ADMIN_BIT) found = 1;
             break;
         }
     }
-
     fclose(fp);
-
-    if (!found_cap_eff) {
-        return 0;
-    }
-
-    if (cap_eff & CAP_SYS_ADMIN_BIT) {
-        return 1;
-    } else {
-        return 0;
-    }
+    return found;
 }
 
 int main(int argc, char *argv[], char *envp[]) {
-    cmdline_parser(argc, argv, &args_info);
+    const char *exec_path = "/system/bin/lite";
+    const char *base_dir_for_mkdir = "data";
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--base-dir") == 0 && i + 1 < argc) {
+            base_dir_for_mkdir = argv[++i];
+        }
+    }
+
     if (signal(SIGINT, intHan) == SIG_ERR) {
         perror("signal");
         return 1;
@@ -109,7 +93,7 @@ int main(int argc, char *argv[], char *envp[]) {
     }
 
     chmod("/system/bin/linker64", 0755);
-    chmod("/system/bin/lite", 0755);
+    chmod(exec_path, 0755);
 
     if (has_cap_sys_admin()) {
         if (unshare(CLONE_NEWPID)) {
@@ -134,18 +118,17 @@ int main(int argc, char *argv[], char *envp[]) {
         return 1;
     }
 
-    if (mkdir(args_info.base_dir_arg, 0777) != 0 && errno != EEXIST) {
-        perror("mkdir base_dir_arg failed");
+    if (mkdir(base_dir_for_mkdir, 0777) != 0 && errno != EEXIST) {
+        perror("mkdir base_dir failed");
     }
-    
-    char db_dir[1024];
-    snprintf(db_dir, sizeof(db_dir), "%s/mpl_db", args_info.base_dir_arg);
-    if (mkdir(db_dir, 0777) != 0 && errno != EEXIST) {
+
+    char db_path[1024];
+    snprintf(db_path, sizeof(db_path), "%s/mpl_db", base_dir_for_mkdir);
+    if (mkdir(db_path, 0777) != 0 && errno != EEXIST) {
         perror("mkdir mpl_db failed");
     }
 
-    execve("/system/bin/lite", argv, envp);
-    
+    execve(exec_path, argv, envp);
     perror("execve");
     return 1;
 }

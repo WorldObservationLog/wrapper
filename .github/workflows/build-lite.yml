@@ -144,18 +144,19 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
+          $qemuDir = $null
           $q = Get-Command qemu-system-x86_64.exe -ErrorAction SilentlyContinue
-          if ($q) {
-            Copy-Item $q.Source dist\qemu\bin\
-          } else {
+          if ($q) { $qemuDir = Split-Path $q.Source }
+          if (-not $qemuDir) {
             $candidates = @(
-              "C:\Program Files\qemu\qemu-system-x86_64.exe",
-              "C:\ProgramData\chocolatey\bin\qemu-system-x86_64.exe"
+              "C:\Program Files\qemu",
+              "C:\ProgramData\chocolateyin"
             )
-            $found = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
-            if ($found) { Copy-Item $found dist\qemu\bin\ }
-            else { Write-Error "qemu-system-x86_64.exe not found"; exit 1 }
+            $qemuDir = $candidates | Where-Object { Test-Path "$_\qemu-system-x86_64.exe" } | Select-Object -First 1
           }
+          if (-not $qemuDir) { Write-Error "qemu-system-x86_64.exe not found"; exit 1 }
+          New-Item -ItemType Directory -Force -Path dist\qemuin | Out-Null
+          Copy-Item "$qemuDir\*" dist\qemuin\ -Recurse -Force
 
       - name: Upload QEMU package
         uses: actions/upload-artifact@v7
