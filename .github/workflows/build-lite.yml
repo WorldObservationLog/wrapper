@@ -171,7 +171,11 @@ jobs:
           cp -R qemu-assets/* dist/qemu/
           cp README.md dist/
           cp LICENSE dist/
-          cp wrapper-lite-qemu* dist/
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            cp wrapper-lite-qemu.exe dist/
+          else
+            cp wrapper-lite-qemu dist/
+          fi
 
       - name: Copy QEMU binary (Linux/macOS)
         if: runner.os != 'Windows'
@@ -199,7 +203,8 @@ jobs:
           if (-not $qemuDir) { Write-Error 'qemu-system-x86_64.exe not found'; exit 1 }
           $dst = Join-Path (Join-Path 'dist' 'qemu') 'bin'
           New-Item -ItemType Directory -Force -Path $dst | Out-Null
-          Copy-Item (Join-Path $qemuDir '*') $dst -Recurse -Force
+          Copy-Item (Join-Path $qemuDir 'qemu-system-x86_64.exe') $dst
+          Get-ChildItem (Join-Path $qemuDir '*.dll') -File | ForEach-Object { Copy-Item $_.FullName $dst }
       - name: Upload QEMU package
         uses: actions/upload-artifact@v7
         with:
