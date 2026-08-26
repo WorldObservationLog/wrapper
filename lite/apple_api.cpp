@@ -296,9 +296,14 @@ std::string AppleApi::getWebPlayback(const std::string& adamId,
     curl.setOptInt(CURLOPT_POST, 1);
 
     CurlSlist headers;
+    /* The webPlayback endpoint requires the media dev token in the
+       Authorization header plus the account's music user token. Omitting
+       Authorization makes Apple reject the request with
+       {"failureType":"2002","customerMessage":"Your session has ended..."}. */
     headers.append(strfmt("Authorization: Bearer %s", devToken.c_str()).c_str());
     headers.append(strfmt("X-Apple-Music-User-Token: %s", musicToken.c_str()).c_str());
     headers.append("Content-Type: application/json");
+    headers.append("User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36");
     curl.setOptPtr(CURLOPT_HTTPHEADER, headers.list);
 
     if (!curl.perform()) { LOG_WARN("webplayback curl perform failed"); return ""; }
@@ -311,6 +316,14 @@ std::string AppleApi::getWebPlayback(const std::string& adamId,
     cJSON* root = cJSON_Parse(resp.c_str());
     if (!root) { LOG_WARN("webplayback bad json: %.200s", resp.c_str()); return ""; }
     std::string m3u8;
+
+    cJSON* failureType = cJSON_GetObjectItemCaseSensitive(root, "failureType");
+    if (cJSON_IsString(failureType)) {
+        LOG_WARN("webplayback rejected failureType=%s body=%.200s",
+                 failureType->valuestring, resp.c_str());
+        cJSON_Delete(root);
+        return "";
+    }
 
     cJSON* errors = cJSON_GetObjectItemCaseSensitive(root, "errors");
     if (errors && cJSON_GetArraySize(errors) > 0) {
