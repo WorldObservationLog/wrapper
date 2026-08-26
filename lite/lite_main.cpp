@@ -461,7 +461,7 @@ int main(int argc, char* argv[]) {
         std::string password = g_login_credentials.substr(colon + 1);
         set_credentials(username.c_str(), password.c_str());
 
-        LOG_INFO("wrapper-lite login-only mode");
+        LOG_INFO("wrapper-lite login mode");
 
         /* Run the whole login + native token refresh in a child process.
          * On Termux + QEMU TCG the Android URLRequest destructors corrupt the
@@ -511,7 +511,7 @@ int main(int argc, char* argv[]) {
             std::lock_guard<std::mutex> lock(g_tokens_mutex);
             save_token_cache();
         }
-        LOG_INFO("login complete, exiting (--login-only mode)");
+        LOG_INFO("login complete, exiting");
         return 0;
     }
 
