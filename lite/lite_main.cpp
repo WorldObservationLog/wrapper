@@ -42,8 +42,6 @@ static std::string g_base_dir = "data";
 static std::string g_log_level = "info";
 static std::string g_log_file;
 static int g_token_refresh_interval = 1800;
-static bool g_refresh_only = false;
-static std::string g_argv0;
 
 /* ---- Token state and background refresh ---- */
 static std::mutex g_tokens_mutex;
@@ -337,14 +335,6 @@ static void handle_license(const httplib::Request& req, httplib::Response& res) 
 /*     Background tasks           */
 /* ============================== */
 
-static std::string read_token_file_disk(const std::string& path) {
-    std::ifstream f(path);
-    if (!f) return "";
-    std::string c((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
-    while (!c.empty() && (c.back() == ' ' || c.back() == 10 || c.back() == 13)) c.pop_back();
-    return c;
-}
-
 static void token_refresh_worker() {
     while (!g_refresh_stop.load()) {
         for (int i = 0; i < g_token_refresh_interval && !g_refresh_stop.load(); ++i) {
@@ -353,46 +343,8 @@ static void token_refresh_worker() {
         if (g_refresh_stop.load()) break;
 
         LOG_INFO("background token refresh starting");
-        /* The refresh runs Android URLRequest objects that used to overflow
-           their undersized stack buffer and corrupt the caller's frame
-           (fixed in tokens.cpp).  As defense-in-depth, still run the refresh
-           in a fresh forked + exec'd child (`--refresh-only` mode): a crash
-           or hang in the child can never kill or block the HTTP service, and
-           fork() from a multithreaded server is otherwise unsafe. */
-        pid_t pid = fork();
-        if (pid < 0) {
-            LOG_WARN("background token refresh fork failed");
-            continue;
-        }
-        if (pid == 0) {
-            /* The guest init runs lite via LITE_ARGS_FILE; a child inheriting
-               it would ignore its argv and start another HTTP server instead
-               of the refresh-only mode. */
-            unsetenv("LITE_ARGS_FILE");
-            char* args[] = { const_cast<char*>(g_argv0.c_str()),
-                             const_cast<char*>("--refresh-only"),
-                             const_cast<char*>("--base-dir"),
-                             const_cast<char*>(g_base_dir.c_str()),
-                             nullptr };
-            execv(g_argv0.c_str(), args);
-            LOG_ERROR("background token refresh exec failed: %s", strerror(errno));
-            _exit(127);
-        }
-        int status = 0;
-        waitpid(pid, &status, 0);
-        if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
-            LOG_WARN("background token refresh failed");
-            continue;
-        }
-
-        std::string sf = read_token_file_disk(std::string(g_base_dir) + "/STOREFRONT_ID");
-        std::string dev = read_token_file_disk(std::string(g_base_dir) + "/DEV_TOKEN");
-        std::string music = read_token_file_disk(std::string(g_base_dir) + "/MUSIC_TOKEN");
-        if (music.empty()) {
-            LOG_WARN("background token refresh failed (no music token written)");
-            continue;
-        }
-        {
+        std::string sf, dev, music;
+        if (refresh_tokens(sf, dev, music)) {
             std::lock_guard<std::mutex> lock(g_tokens_mutex);
             if (!sf.empty()) {
                 g_tokens.storefront_id = normalize_storefront_id(sf);
@@ -401,8 +353,10 @@ static void token_refresh_worker() {
             if (!dev.empty()) g_tokens.dev_token = dev;
             if (!music.empty()) g_tokens.music_token = music;
             save_token_cache();
+            LOG_INFO("background token refresh completed");
+        } else {
+            LOG_WARN("background token refresh failed");
         }
-        LOG_INFO("background token refresh completed");
     }
 }
 
@@ -439,7 +393,6 @@ static LogLevel parse_log_level(const std::string& s) {
 }
 
 int main(int argc, char* argv[]) {
-    g_argv0 = argv[0];
     setenv("ANDROID_DATA", "/data", 1);
     setenv("ANDROID_ROOT", "/system", 1);
     setenv("TZ", "UTC", 1);
@@ -472,7 +425,6 @@ int main(int argc, char* argv[]) {
         else if (arg == "--log-level" && i + 1 < cmdline_args.size()) g_log_level = cmdline_args[++i];
         else if (arg == "--log-file" && i + 1 < cmdline_args.size()) g_log_file = cmdline_args[++i];
         else if (arg == "--token-refresh-interval" && i + 1 < cmdline_args.size()) g_token_refresh_interval = atoi(cmdline_args[++i].c_str());
-        else if (arg == "--refresh-only") g_refresh_only = true;
         else if (arg == "--proxy" && i + 1 < cmdline_args.size()) {
             g_proxy = cmdline_args[++i];
             setenv("all_proxy", g_proxy.c_str(), 1);
@@ -498,21 +450,6 @@ int main(int argc, char* argv[]) {
     Logger::get().configure(parse_log_level(g_log_level), g_log_file, 5 * 1024 * 1024);
     set_base_dir(g_base_dir.c_str());
     g_tokens.base_dir = g_base_dir;
-
-    /* Dedicated refresh child (spawned by the service's background worker via
-     * fork+exec). A fresh single-threaded process avoids both the QEMU-TCG
-     * URLRequest heap corruption and any mutex inherited from a live server. */
-    if (g_refresh_only) {
-        install_hooks();
-        set_device_info(g_device_info.c_str());
-        g_reqCtx = init_ctx();
-        setup_services();
-        std::string sf, dev, music;
-        bool ok = refresh_tokens(sf, dev, music);
-        if (ok) LOG_INFO("refresh-only: token refresh completed");
-        else LOG_WARN("refresh-only: token refresh failed");
-        return ok ? 0 : 1;
-    }
 
     if (g_login_only) {
         auto colon = g_login_credentials.find(':');
