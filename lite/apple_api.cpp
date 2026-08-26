@@ -184,10 +184,8 @@ std::string AppleApi::getDevToken() {
     curl.setOptStr(CURLOPT_URL, "https://music.apple.com");
     curl.setOptPtr(CURLOPT_WRITEFUNCTION, (void*)&writeCallback);
     curl.setOptPtr(CURLOPT_WRITEDATA, &html);
-    if (g_ssl_verify_disabled) {
-        curl.setOptInt(CURLOPT_SSL_VERIFYPEER, 0);
-        curl.setOptInt(CURLOPT_SSL_VERIFYHOST, 0);
-    }
+    curl.setOptInt(CURLOPT_SSL_VERIFYPEER, 0);
+    curl.setOptInt(CURLOPT_SSL_VERIFYHOST, 0);
     curl.setOptInt(CURLOPT_FOLLOWLOCATION, 1);
     curl.setOptInt(CURLOPT_TIMEOUT_MS, 15000);
     curl.setOptStr(CURLOPT_USERAGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
@@ -236,10 +234,8 @@ std::string AppleApi::getLyrics(const std::string& adamId,
     curl.setOptStr(CURLOPT_URL, url.c_str());
     curl.setOptPtr(CURLOPT_WRITEFUNCTION, (void*)&writeCallback);
     curl.setOptPtr(CURLOPT_WRITEDATA, &resp);
-    if (g_ssl_verify_disabled) {
-        curl.setOptInt(CURLOPT_SSL_VERIFYPEER, 0);
-        curl.setOptInt(CURLOPT_SSL_VERIFYHOST, 0);
-    }
+    curl.setOptInt(CURLOPT_SSL_VERIFYPEER, 0);
+    curl.setOptInt(CURLOPT_SSL_VERIFYHOST, 0);
     curl.setOptInt(CURLOPT_TIMEOUT_MS, 15000);
     curl.setOptStr(CURLOPT_USERAGENT, "Music/5.7 Android/10 model/Pixel6GR1YH build/1234 (dt:66)");
 
@@ -249,15 +245,20 @@ std::string AppleApi::getLyrics(const std::string& adamId,
     headers.append("Origin: https://music.apple.com");
     curl.setOptPtr(CURLOPT_HTTPHEADER, headers.list);
 
-    if (!curl.perform()) return "";
-    if (curl.getResponseCode() != 200) return "";
+    if (!curl.perform()) { LOG_WARN("lyrics curl perform failed"); return ""; }
+    long lstatus = curl.getResponseCode();
+    if (lstatus != 200 && lstatus != 0) {
+        LOG_WARN("lyrics http status=%ld body=%.300s", lstatus, resp.c_str());
+        return "";
+    }
 
     cJSON* root = cJSON_Parse(resp.c_str());
-    if (!root) return "";
+    if (!root) { LOG_WARN("lyrics bad json: %.200s", resp.c_str()); return ""; }
     std::string lyrics;
     cJSON* errors = cJSON_GetObjectItemCaseSensitive(root, "errors");
     if (errors && cJSON_GetArraySize(errors) > 0) {
         cJSON_Delete(root);
+        LOG_WARN("lyrics API errors: %.200s", resp.c_str());
         return "";
     }
     cJSON* data = cJSON_GetObjectItemCaseSensitive(root, "data");
@@ -288,10 +289,8 @@ std::string AppleApi::getWebPlayback(const std::string& adamId,
     curl.setOptStr(CURLOPT_URL, "https://play.music.apple.com/WebObjects/MZPlay.woa/wa/webPlayback");
     curl.setOptPtr(CURLOPT_WRITEFUNCTION, (void*)&writeCallback);
     curl.setOptPtr(CURLOPT_WRITEDATA, &resp);
-    if (g_ssl_verify_disabled) {
-        curl.setOptInt(CURLOPT_SSL_VERIFYPEER, 0);
-        curl.setOptInt(CURLOPT_SSL_VERIFYHOST, 0);
-    }
+    curl.setOptInt(CURLOPT_SSL_VERIFYPEER, 0);
+    curl.setOptInt(CURLOPT_SSL_VERIFYHOST, 0);
     curl.setOptInt(CURLOPT_TIMEOUT_MS, 15000);
     curl.setOptStr(CURLOPT_POSTFIELDS, postBody.c_str());
     curl.setOptInt(CURLOPT_POST, 1);
@@ -302,16 +301,21 @@ std::string AppleApi::getWebPlayback(const std::string& adamId,
     headers.append("Content-Type: application/json");
     curl.setOptPtr(CURLOPT_HTTPHEADER, headers.list);
 
-    if (!curl.perform()) return "";
-    if (curl.getResponseCode() != 200) return "";
+    if (!curl.perform()) { LOG_WARN("webplayback curl perform failed"); return ""; }
+    long wstatus = curl.getResponseCode();
+    if (wstatus != 200 && wstatus != 0) {
+        LOG_WARN("webplayback http status=%ld body=%.300s", wstatus, resp.c_str());
+        return "";
+    }
 
     cJSON* root = cJSON_Parse(resp.c_str());
-    if (!root) return "";
+    if (!root) { LOG_WARN("webplayback bad json: %.200s", resp.c_str()); return ""; }
     std::string m3u8;
 
     cJSON* errors = cJSON_GetObjectItemCaseSensitive(root, "errors");
     if (errors && cJSON_GetArraySize(errors) > 0) {
         cJSON_Delete(root);
+        LOG_WARN("webplayback API errors: %.200s", resp.c_str());
         return "";
     }
 
@@ -370,10 +374,8 @@ bool AppleApi::getLicense(const std::string& adamId,
     curl.setOptStr(CURLOPT_URL, "https://play.itunes.apple.com/WebObjects/MZPlay.woa/wa/acquireWebPlaybackLicense");
     curl.setOptPtr(CURLOPT_WRITEFUNCTION, (void*)&writeCallback);
     curl.setOptPtr(CURLOPT_WRITEDATA, &resp);
-    if (g_ssl_verify_disabled) {
-        curl.setOptInt(CURLOPT_SSL_VERIFYPEER, 0);
-        curl.setOptInt(CURLOPT_SSL_VERIFYHOST, 0);
-    }
+    curl.setOptInt(CURLOPT_SSL_VERIFYPEER, 0);
+    curl.setOptInt(CURLOPT_SSL_VERIFYHOST, 0);
     curl.setOptInt(CURLOPT_TIMEOUT_MS, 15000);
     curl.setOptStr(CURLOPT_POSTFIELDS, postBody.c_str());
     curl.setOptInt(CURLOPT_POST, 1);
