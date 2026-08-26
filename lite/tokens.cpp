@@ -41,16 +41,36 @@ static char* get_guid() {
     return strdup(guid);
 }
 
-static char* get_dev_token_impl() {
-    static uint8_t ptr[480];
-    memset(ptr, 0, sizeof(ptr));
+/* Build a shared_ptr<HTTPMessage> with a control block that behaves like a
+ * real make_shared emplace (defensive hardening):
+ *   - refcounts start at 1, so the Android library's internal copy/release
+ *     cycles never reach zero and __on_zero_shared() (which would destroy
+ *     the value and `delete` the block) is never invoked.  The previous code
+ *     used a static buffer with refcount 0, which is invalid for a held
+ *     shared_ptr.
+ *   - the block is heap-allocated, so even if the library ever releases the
+ *     last reference, freeing it is safe.
+ */
+static struct shared_ptr make_http_message(const char* url, const char* method) {
+    uint8_t* ptr = (uint8_t*)calloc(1, 512);
     *(void**)ptr = &_ZTVNSt6__ndk120__shared_ptr_emplaceIN13mediaplatform11HTTPMessageENS_9allocatorIS2_EEEE + 2;
+    *(size_t*)(ptr + 8) = 1;   /* __shared_owners_ */
+    *(size_t*)(ptr + 16) = 1;  /* __shared_weak_owners_ */
     struct shared_ptr httpMessage = {.obj = ptr + 32, .ctrl_blk = ptr};
-    union std_string url = new_std_string("https://sf-api-token-service.itunes.apple.com/apiToken");
-    union std_string method = new_std_string("GET");
-    _ZN13mediaplatform11HTTPMessageC2ENSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEES7_(httpMessage.obj, &url, &method);
+    union std_string u = new_std_string(url);
+    union std_string m = new_std_string(method);
+    _ZN13mediaplatform11HTTPMessageC2ENSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEES7_(httpMessage.obj, &u, &m);
+    return httpMessage;
+}
 
-    uint8_t urlRequest[512];
+static char* get_dev_token_impl() {
+    struct shared_ptr httpMessage = make_http_message("https://sf-api-token-service.itunes.apple.com/apiToken", "GET");
+
+    /* URLRequest is larger than 512 bytes; a 512-byte buffer overflowed in
+       the constructor and corrupted the caller's stack frame (crashing the
+       refresh with a null std::string move).  2048 bytes keeps the object
+       contained. */
+    uint8_t urlRequest[2048];
     memset(urlRequest, 0, sizeof(urlRequest));
     _ZN17storeservicescore10URLRequestC2ERKNSt6__ndk110shared_ptrIN13mediaplatform11HTTPMessageEEERKNS2_INS_14RequestContextEEE(urlRequest, &httpMessage, &g_reqCtx);
     union std_string clientIdName = new_std_string("clientId");
@@ -87,13 +107,7 @@ static char* get_music_user_token_impl(const char* authToken) {
     char* guid = get_guid();
     if (!guid) return nullptr;
 
-    static uint8_t ptr[480];
-    memset(ptr, 0, sizeof(ptr));
-    *(void**)ptr = &_ZTVNSt6__ndk120__shared_ptr_emplaceIN13mediaplatform11HTTPMessageENS_9allocatorIS2_EEEE + 2;
-    struct shared_ptr httpMessage = {.obj = ptr + 32, .ctrl_blk = ptr};
-    union std_string url = new_std_string("https://play.itunes.apple.com/WebObjects/MZPlay.woa/wa/createMusicToken");
-    union std_string method = new_std_string("POST");
-    _ZN13mediaplatform11HTTPMessageC2ENSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEES7_(httpMessage.obj, &url, &method);
+    struct shared_ptr httpMessage = make_http_message("https://play.itunes.apple.com/WebObjects/MZPlay.woa/wa/createMusicToken", "POST");
 
     union std_string ctHeader = new_std_string("Content-Type");
     union std_string ctValue = new_std_string("application/json; charset=UTF-8");
@@ -124,7 +138,8 @@ static char* get_music_user_token_impl(const char* authToken) {
         cJSON_free(body);
     }
 
-    uint8_t urlRequest[512];
+    /* URLRequest is larger than 512 bytes; see get_dev_token_impl(). */
+    uint8_t urlRequest[2048];
     memset(urlRequest, 0, sizeof(urlRequest));
     _ZN17storeservicescore10URLRequestC2ERKNSt6__ndk110shared_ptrIN13mediaplatform11HTTPMessageEEERKNS2_INS_14RequestContextEEE(urlRequest, &httpMessage, &g_reqCtx);
     _ZN17storeservicescore10URLRequest3runEv(urlRequest);

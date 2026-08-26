@@ -353,11 +353,12 @@ static void token_refresh_worker() {
         if (g_refresh_stop.load()) break;
 
         LOG_INFO("background token refresh starting");
-        /* Under QEMU TCG the Android URLRequest destructors corrupt the heap,
-           and fork() from a multithreaded server can deadlock the child on a
-           mutex inherited from another thread.  Run the refresh in a fresh
-           forked + exec'd child (`--refresh-only` mode): a crash or hang in
-           the child can then never kill or block the HTTP service. */
+        /* The refresh runs Android URLRequest objects that used to overflow
+           their undersized stack buffer and corrupt the caller's frame
+           (fixed in tokens.cpp).  As defense-in-depth, still run the refresh
+           in a fresh forked + exec'd child (`--refresh-only` mode): a crash
+           or hang in the child can never kill or block the HTTP service, and
+           fork() from a multithreaded server is otherwise unsafe. */
         pid_t pid = fork();
         if (pid < 0) {
             LOG_WARN("background token refresh fork failed");
