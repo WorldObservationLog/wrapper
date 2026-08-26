@@ -159,7 +159,7 @@ jobs:
         shell: bash
         run: |
           if [[ "${{ runner.os }}" == "Windows" ]]; then
-            g++ -std=c++11 -O2 -o wrapper-lite-qemu.exe wrapper-lite-qemu.cpp
+            g++ -std=c++11 -O2 -static -o wrapper-lite-qemu.exe wrapper-lite-qemu.cpp
           else
             c++ -std=c++11 -O2 -o wrapper-lite-qemu wrapper-lite-qemu.cpp
           fi
