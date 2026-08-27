@@ -45,7 +45,8 @@ static int g_token_refresh_interval = 1800;
 
 /* ---- Token state and background refresh ---- */
 static std::mutex g_tokens_mutex;
-static std::chrono::steady_clock::time_point g_last_dev_token_attempt;
+static std::string g_web_dev_token;
+static std::chrono::steady_clock::time_point g_last_web_dev_attempt;
 static std::atomic<bool> g_refresh_stop{false};
 static httplib::Server* g_svr = nullptr;
 static sigset_t g_signal_set;
@@ -124,9 +125,13 @@ static void save_token_cache() {
     g_tokens.save();
 }
 
-/* Fetch dev token for Lyrics/License/WebPlayback. Prefer the Android
- * storeservicescore token (same account context), fall back to the
- * wrapper-manager style music.apple.com scrape. */
+/* Fetch dev token for Lyrics/License/WebPlayback.  The web endpoints must use
+ * the WebPlay dev token embedded in music.apple.com's JS (iss=AMPWebPlay,
+ * kid=WebPlayKid) - exactly what wrapper-manager's GetToken() returns and the
+ * token the browser sends.  The Android storeservicescore token
+ * (iss=UDK28SN10P) is accepted by webPlayback and lyrics but REJECTED by
+ * acquireWebPlaybackLicense (Apple returns HTTP 500), so it is only a
+ * fallback when the scrape is unavailable. */
 static WebTokens get_web_tokens() {
     std::lock_guard<std::mutex> lock(g_tokens_mutex);
     if (g_tokens.music_token.empty()) g_tokens.music_token = get_music_token();
@@ -134,23 +139,23 @@ static WebTokens get_web_tokens() {
     g_tokens.storefront_id = normalize_storefront_id(g_tokens.storefront_id);
     if (g_tokens.storefront_id.empty()) g_tokens.storefront_id = "us";
 
-    if (g_tokens.dev_token.empty()) {
-        auto now = std::chrono::steady_clock::now();
-        if (g_last_dev_token_attempt == std::chrono::steady_clock::time_point{} ||
-            now - g_last_dev_token_attempt > std::chrono::seconds(30)) {
-            g_last_dev_token_attempt = now;
-            g_tokens.dev_token = fetch_dev_token();
-            if (g_tokens.dev_token.empty()) {
-                g_tokens.dev_token = AppleApi::getDevToken();
-            }
-            if (!g_tokens.dev_token.empty()) {
-                save_token_cache();
-            }
+    auto now = std::chrono::steady_clock::now();
+    if (g_web_dev_token.empty()) {
+        /* retry the scrape at most every 60 s until it succeeds */
+        if (g_last_web_dev_attempt == std::chrono::steady_clock::time_point{} ||
+            now - g_last_web_dev_attempt > std::chrono::seconds(60)) {
+            g_last_web_dev_attempt = now;
+            g_web_dev_token = AppleApi::getDevToken();
         }
+    } else if (now - g_last_web_dev_attempt > std::chrono::hours(24)) {
+        /* refresh the long-lived WebPlay token once a day (wrapper-manager) */
+        g_last_web_dev_attempt = now;
+        std::string fresh = AppleApi::getDevToken();
+        if (!fresh.empty()) g_web_dev_token = fresh;
     }
 
     WebTokens tokens;
-    tokens.dev_token = g_tokens.dev_token;
+    tokens.dev_token = g_web_dev_token.empty() ? g_tokens.dev_token : g_web_dev_token;
     tokens.music_token = g_tokens.music_token;
     tokens.storefront_id = g_tokens.storefront_id;
     return tokens;

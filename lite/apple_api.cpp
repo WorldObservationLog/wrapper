@@ -190,12 +190,14 @@ std::string AppleApi::getDevToken() {
     curl.setOptInt(CURLOPT_TIMEOUT_MS, 15000);
     curl.setOptStr(CURLOPT_USERAGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
     curl.setOptStr(CURLOPT_ACCEPT_ENCODING, "");
-    if (!curl.perform()) return "";
+    if (!curl.perform()) { LOG_WARN("devtoken: fetch music.apple.com failed"); return ""; }
+    LOG_DEBUG("devtoken: html size=%zu", html.size());
 
     std::regex jsRe("/assets/index~[^/]+\\.js");
     std::smatch match;
-    if (!std::regex_search(html, match, jsRe)) return "";
+    if (!std::regex_search(html, match, jsRe)) { LOG_WARN("devtoken: no js asset in html"); return ""; }
     std::string jsPath = match.str();
+    LOG_DEBUG("devtoken: js path=%s", jsPath.c_str());
 
     std::string js;
     CurlEasy jsCurl;
@@ -208,11 +210,13 @@ std::string AppleApi::getDevToken() {
     jsCurl.setOptInt(CURLOPT_FOLLOWLOCATION, 1);
     jsCurl.setOptInt(CURLOPT_TIMEOUT_MS, 15000);
     jsCurl.setOptStr(CURLOPT_ACCEPT_ENCODING, "");
-    if (!jsCurl.perform()) return "";
+    if (!jsCurl.perform()) { LOG_WARN("devtoken: fetch js failed"); return ""; }
+    LOG_DEBUG("devtoken: js size=%zu", js.size());
 
     std::regex tokenRe("eyJ[A-Za-z0-9-_=]+\\.[A-Za-z0-9-_=]+\\.[A-Za-z0-9-_=]+");
     std::smatch tokenMatch;
-    if (!std::regex_search(js, tokenMatch, tokenRe)) return "";
+    if (!std::regex_search(js, tokenMatch, tokenRe)) { LOG_WARN("devtoken: no JWT in js"); return ""; }
+    LOG_DEBUG("devtoken: got token %.30s...", tokenMatch.str().c_str());
     return tokenMatch.str();
 }
 
@@ -400,11 +404,20 @@ bool AppleApi::getLicense(const std::string& adamId,
     headers.append("Content-Type: application/json");
     curl.setOptPtr(CURLOPT_HTTPHEADER, headers.list);
 
-    if (!curl.perform()) return false;
-    if (curl.getResponseCode() != 200) return false;
+    if (!curl.perform()) { LOG_WARN("license curl perform failed"); return false; }
+    long lcode = curl.getResponseCode();
+    LOG_DEBUG("license: dev=%.24s... music=%.24s... uri=%.60s",
+              devToken.c_str(), musicToken.c_str(), uri.c_str());
+    /* The dlopen'd libcurl reports 0 instead of 200 here (same as lyrics and
+       webplayback, which both tolerate 0); a strict `!= 200` check wrongly
+       rejects a successful license. */
+    if (lcode != 200 && lcode != 0) {
+        LOG_WARN("license http status=%ld body=%.300s", lcode, resp.c_str());
+        return false;
+    }
 
     cJSON* root = cJSON_Parse(resp.c_str());
-    if (!root) return false;
+    if (!root) { LOG_WARN("license bad json: %.200s", resp.c_str()); return false; }
 
     bool ok = false;
     cJSON* errors = cJSON_GetObjectItemCaseSensitive(root, "errors");
@@ -414,6 +427,8 @@ bool AppleApi::getLicense(const std::string& adamId,
         outLicense = license->valuestring;
         outRenew = renewAfter ? (int)cJSON_GetNumberValue(renewAfter) : 0;
         ok = true;
+    } else {
+        LOG_WARN("license response without license field: %.200s", resp.c_str());
     }
     cJSON_Delete(root);
     return ok;
