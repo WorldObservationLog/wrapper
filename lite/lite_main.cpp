@@ -245,11 +245,21 @@ static void handle_key(const httplib::Request& req, httplib::Response& res) {
 static void handle_lyrics(const httplib::Request& req, httplib::Response& res) {
     auto adamId = req.get_param_value("adamId");
     auto language = req.get_param_value("language");
+    auto syllable = req.get_param_value("syllable");
     if (adamId.empty()) {
         res.set_content(json_error(400, "missing adamId"), "application/json");
         return;
     }
     if (language.empty()) language = "en";
+    /* syllable=0|false|no -> standard /lyrics; default (and syllable=1) ->
+       word-timed /syllable-lyrics. */
+    bool use_syllable = true;
+    if (!syllable.empty()) {
+        std::string s = syllable;
+        std::transform(s.begin(), s.end(), s.begin(),
+                       [](unsigned char c){ return (char)std::tolower(c); });
+        if (s == "0" || s == "false" || s == "no" || s == "off") use_syllable = false;
+    }
 
     WebTokens tokens = get_web_tokens();
     if (!tokens.valid()) {
@@ -258,7 +268,7 @@ static void handle_lyrics(const httplib::Request& req, httplib::Response& res) {
     }
 
     std::string lyrics = AppleApi::getLyrics(adamId, tokens.storefront_id, language,
-                                              tokens.dev_token, tokens.music_token);
+                                              use_syllable, tokens.dev_token, tokens.music_token);
     if (lyrics.empty()) {
         res.set_content(json_error(404, "lyrics not found"), "application/json");
         return;
@@ -266,6 +276,7 @@ static void handle_lyrics(const httplib::Request& req, httplib::Response& res) {
 
     cJSON* data = cJSON_CreateObject();
     cJSON_AddStringToObject(data, "adamId", adamId.c_str());
+    cJSON_AddStringToObject(data, "syllable", use_syllable ? "true" : "false");
     cJSON_AddStringToObject(data, "lyrics", lyrics.c_str());
     res.set_content(json_success(data), "application/json");
 }

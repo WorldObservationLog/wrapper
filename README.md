@@ -75,7 +75,7 @@ All responses use:
 |----------|--------|------------|
 | `/m3u8` | GET | `adamId` |
 | `/key` | GET | `adamId`, optional `uri` |
-| `/lyrics` | GET | `adamId`, optional `language` |
+| `/lyrics` | GET | `adamId`, optional `language`, optional `syllable` (`1`=syllable-lyrics default, `0`=lyrics) |
 | `/webplayback` | GET | `adamId` |
 | `/license` | POST | JSON: `adamId`, `challenge`, `uri` |
 | `/status` | GET | returns `storefront` |

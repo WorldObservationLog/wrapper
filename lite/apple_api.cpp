@@ -221,18 +221,23 @@ std::string AppleApi::getDevToken() {
 }
 
 /* ---- Lyrics ---- */
+/* syllable=true  -> word-timed /syllable-lyrics (attributes.ttmlLocalizations)
+ * syllable=false -> standard /lyrics            (attributes.ttml / text) */
 std::string AppleApi::getLyrics(const std::string& adamId,
                                   const std::string& region,
                                   const std::string& language,
+                                  bool syllable,
                                   const std::string& devToken,
                                   const std::string& musicToken) {
     CurlEasy curl;
     if (!curl.ok) return "";
 
     std::string url = strfmt(
-        "https://amp-api.music.apple.com/v1/catalog/%s/songs/%s/syllable-lyrics"
+        "https://amp-api.music.apple.com/v1/catalog/%s/songs/%s/%s"
         "?l[lyrics]=%s&extend=ttmlLocalizations&l[script]=en-Latn",
-        region.c_str(), adamId.c_str(), language.c_str());
+        region.c_str(), adamId.c_str(),
+        syllable ? "syllable-lyrics" : "lyrics",
+        language.c_str());
 
     std::string resp;
     curl.setOptStr(CURLOPT_URL, url.c_str());
@@ -269,8 +274,14 @@ std::string AppleApi::getLyrics(const std::string& adamId,
     if (cJSON_IsArray(data) && cJSON_GetArraySize(data) > 0) {
         cJSON* first = cJSON_GetArrayItem(data, 0);
         cJSON* attrs = cJSON_GetObjectItemCaseSensitive(first, "attributes");
-        cJSON* ttml = cJSON_GetObjectItemCaseSensitive(attrs, "ttmlLocalizations");
+        cJSON* ttml = cJSON_GetObjectItemCaseSensitive(attrs,
+                         syllable ? "ttmlLocalizations" : "ttml");
         if (cJSON_IsString(ttml)) lyrics = ttml->valuestring;
+        if (lyrics.empty() && !syllable) {
+            /* some tracks only expose plain-text lyrics */
+            cJSON* text = cJSON_GetObjectItemCaseSensitive(attrs, "text");
+            if (cJSON_IsString(text)) lyrics = text->valuestring;
+        }
     }
     cJSON_Delete(root);
     return lyrics;
