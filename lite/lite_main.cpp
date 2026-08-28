@@ -579,7 +579,14 @@ int main(int argc, char* argv[]) {
             storefront = g_tokens.storefront_id;
         }
         cJSON* data = cJSON_CreateObject();
-        cJSON_AddStringToObject(data, "storefront", storefront.c_str());
+        /* Regions this wrapper can serve.  Single-account for now, but the
+           array shape mirrors wrapper-manager's StatusData.regions and
+           prepares for future multi-wrapper aggregation. */
+        cJSON* regions = cJSON_CreateArray();
+        if (!storefront.empty()) {
+            cJSON_AddItemToArray(regions, cJSON_CreateString(storefront.c_str()));
+        }
+        cJSON_AddItemToObject(data, "regions", regions);
         res.set_content(json_success(data), "application/json");
     });
 

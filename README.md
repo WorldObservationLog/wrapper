@@ -78,7 +78,7 @@ All responses use:
 | `/lyrics` | GET | `adamId`, optional `language`, optional `syllable` (`1`=syllable-lyrics default, `0`=lyrics) |
 | `/webplayback` | GET | `adamId` |
 | `/license` | POST | JSON: `adamId`, `challenge`, `uri` |
-| `/status` | GET | returns `storefront` |
+| `/status` | GET | returns `regions` (list of storefront codes this wrapper can serve) |
 
 ## lite arguments
 
