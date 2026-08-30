@@ -144,7 +144,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y qemu-system-x86
+          sudo apt-get install -y qemu-system-x86 seabios ipxe-qemu
 
       - name: Install QEMU (macOS)
         if: runner.os == 'macOS'
@@ -177,13 +177,19 @@ jobs:
             cp wrapper-lite-qemu dist/
           fi
 
-      - name: Copy QEMU binary (Linux/macOS)
+      - name: Copy QEMU binary and firmware (Linux/macOS)
         if: runner.os != 'Windows'
         shell: bash
         run: |
           cp "$(command -v qemu-system-x86_64)" dist/qemu/bin/
           if [[ "${{ runner.os }}" == "macOS" ]]; then
             cp -R "$(brew --prefix)/share/qemu/"* dist/qemu/bin/ 2>/dev/null || true
+          else
+            # bundle QEMU firmware + SeaBIOS + option ROMs so the launcher's
+            # `-L dist/qemu/bin` is self-contained
+            cp -R /usr/share/qemu/. dist/qemu/bin/ 2>/dev/null || true
+            cp -R /usr/share/seabios/. dist/qemu/bin/ 2>/dev/null || true
+            cp -R /usr/lib/ipxe/qemu/. dist/qemu/bin/ 2>/dev/null || true
           fi
 
       - name: Copy QEMU binary (Windows)
@@ -205,6 +211,14 @@ jobs:
           New-Item -ItemType Directory -Force -Path $dst | Out-Null
           Copy-Item (Join-Path $qemuDir 'qemu-system-x86_64.exe') $dst
           Get-ChildItem (Join-Path $qemuDir '*.dll') -File | ForEach-Object { Copy-Item $_.FullName $dst }
+          # bundle firmware (bios-256k.bin, vgabios, option ROMs) for `-L bin`
+          $share = Join-Path $qemuDir 'share'
+          if (Test-Path $share) {
+            Copy-Item -Recurse -Force (Join-Path $share '*') $dst
+          } else {
+            $bios = Get-ChildItem -Path $qemuDir -Recurse -Filter 'bios-256k.bin' -File -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($bios) { Copy-Item -Recurse -Force (Join-Path $bios.DirectoryName '*') $dst }
+          }
       - name: Upload QEMU package
         uses: actions/upload-artifact@v7
         with:
