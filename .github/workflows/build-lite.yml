@@ -93,6 +93,34 @@ jobs:
         run: |
           ./android-ndk-r23b/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android22-clang++             -std=c++11 -O2 -s -nostdlib++ -lc++_static -lc++abi             -o wrapper-lite-qemu wrapper-lite-qemu.cpp
 
+      - name: Download and bundle Termux QEMU (binary + firmware)
+        shell: bash
+        run: |
+          set -euo pipefail
+          PKGS=$(mktemp)
+          curl -sL -o "$PKGS" https://packages.termux.dev/apt/termux-main/dists/stable/main/binary-aarch64/Packages
+          resolve_file() {
+            awk -v pkg="$1" '
+              $0 == "Package: " pkg { p=1 }
+              p && /^Filename:/ { print $2; exit }
+            ' "$PKGS"
+          }
+          HEADLESS=$(resolve_file qemu-system-x86-64-headless)
+          COMMON=$(resolve_file qemu-common)
+          [ -n "$HEADLESS" ] && [ -n "$COMMON" ]
+          BASE=https://packages.termux.dev/apt/termux-main
+          mkdir -p termux-qemu
+          curl -sL -o termux-qemu/headless.deb "$BASE/${HEADLESS//:/%3a}"
+          curl -sL -o termux-qemu/common.deb "$BASE/${COMMON//:/%3a}"
+          dpkg-deb -x termux-qemu/headless.deb termux-qemu/headless
+          dpkg-deb -x termux-qemu/common.deb termux-qemu/common
+          HP=termux-qemu/headless/data/data/com.termux/files/usr
+          CP=termux-qemu/common/data/data/com.termux/files/usr
+          mkdir -p dist/qemu/bin
+          cp "$HP/bin/qemu-system-x86_64" dist/qemu/bin/
+          cp -R "$CP/share/qemu/." dist/qemu/bin/
+          chmod +x dist/qemu/bin/qemu-system-x86_64
+
       - name: Assemble Android package
         shell: bash
         run: |

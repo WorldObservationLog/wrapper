@@ -217,13 +217,11 @@ static std::vector<std::string> buildQemuArgs(const std::string& qemuBin,
                                               const std::string& argsFile) {
     std::vector<std::string> args;
     args.push_back(qemuBin);
-#ifndef __ANDROID__
     /* Point QEMU at the bundled firmware (SeaBIOS bios-256k.bin, vgabios,
-       option ROMs, ...) so it works standalone on Linux/macOS/Windows.
-       Android (Termux) ships QEMU with its own firmware, so skip -L there. */
+       option ROMs, ...) shipped in qemu/bin for every platform, including
+       Android (bundled from the Termux qemu packages). */
     args.push_back("-L");
     args.push_back(dir + "/bin");
-#endif
     args.push_back("-accel");
     if (accel == "whpx") {
         args.push_back("whpx,kernel-irqchip=off");
