@@ -37,7 +37,14 @@ static int g_port = 8080;
 static bool g_login_only = false;
 static std::string g_login_credentials;
 static std::string g_proxy;
-static std::string g_device_info = "Music/5.0.2/Android/10/Pixel 10/7663314/en-US/en-US/dc28071e371c439e";
+/* Device info: <client>/<version>/<platform>/<osver>/<model>/<build>/<locale>/<lang>/<android-id>.
+   The Android ID is derived from the account username (hashed) and persisted so
+   each account keeps a stable device identity; without a username the persisted
+   ID (or a default) is used. */
+static std::string g_device_info_prefix = "Music/5.0.2/Android/10/Pixel 8/7663314/en-US/en-US";
+static std::string g_default_android_id = "e82320052964d21a";
+static std::string g_device_info_override;
+static std::string g_resolved_device_info;
 static std::string g_base_dir = "data";
 static std::string g_log_level = "info";
 static std::string g_log_file;
@@ -103,6 +110,46 @@ static std::string normalize_storefront_id(const std::string& raw) {
     std::string first = raw.substr(0, raw.find('-'));
     std::string code = builtin_storefront_region(first);
     return code.empty() ? "us" : code;
+}
+
+/* ---- Device info / Android ID ---- */
+
+static std::string hash_android_id(const std::string& username) {
+    uint64_t h = 1469598103934665603ULL; /* FNV-1a 64-bit offset basis */
+    for (unsigned char c : username) {
+        h ^= c;
+        h *= 1099511628211ULL;
+    }
+    char buf[17];
+    snprintf(buf, sizeof(buf), "%016llx", (unsigned long long)h);
+    return std::string(buf);
+}
+
+static std::string resolve_device_info(const std::string& username) {
+    if (!g_device_info_override.empty()) return g_device_info_override;
+
+    std::string androidId;
+    if (!username.empty()) {
+        androidId = hash_android_id(username);
+        /* persist so service mode (which has no username) can reuse it */
+        std::string path = g_base_dir + "/ANDROID_ID";
+        FILE* f = fopen(path.c_str(), "w");
+        if (f) {
+            fwrite(androidId.c_str(), 1, androidId.size(), f);
+            fclose(f);
+        }
+    } else {
+        std::string path = g_base_dir + "/ANDROID_ID";
+        std::ifstream f(path);
+        if (f) {
+            std::string c((std::istreambuf_iterator<char>(f)),
+                          std::istreambuf_iterator<char>());
+            while (!c.empty() && (c.back() == ' ' || c.back() == 10 || c.back() == 13)) c.pop_back();
+            if (!c.empty()) androidId = c;
+        }
+        if (androidId.empty()) androidId = g_default_android_id;
+    }
+    return g_device_info_prefix + "/" + androidId;
 }
 
 /* ============================== */
@@ -449,7 +496,7 @@ int main(int argc, char* argv[]) {
             g_login_only = true;
             g_login_credentials = cmdline_args[++i];
         }
-        else if (arg == "--device-info" && i + 1 < cmdline_args.size()) g_device_info = cmdline_args[++i];
+        else if (arg == "--device-info" && i + 1 < cmdline_args.size()) g_device_info_override = cmdline_args[++i];
         else if (arg == "--base-dir" && i + 1 < cmdline_args.size()) g_base_dir = cmdline_args[++i];
         else if (arg == "--help" || arg == "-h") {
             print_usage();
@@ -476,6 +523,7 @@ int main(int argc, char* argv[]) {
         std::string username = g_login_credentials.substr(0, colon);
         std::string password = g_login_credentials.substr(colon + 1);
         set_credentials(username.c_str(), password.c_str());
+        g_resolved_device_info = resolve_device_info(username);
 
         LOG_INFO("wrapper-lite login mode");
 
@@ -489,7 +537,7 @@ int main(int argc, char* argv[]) {
         }
         if (pid == 0) {
             install_hooks();
-            set_device_info(g_device_info.c_str());
+            set_device_info(g_resolved_device_info.c_str());
             g_reqCtx = init_ctx();
             if (!login(g_reqCtx)) {
                 LOG_ERROR("login failed");
@@ -542,7 +590,8 @@ int main(int argc, char* argv[]) {
     pthread_sigmask(SIG_BLOCK, &g_signal_set, nullptr);
 
     install_hooks();
-    set_device_info(g_device_info.c_str());
+    g_resolved_device_info = resolve_device_info(""); /* no username in service mode */
+    set_device_info(g_resolved_device_info.c_str());
     g_reqCtx = init_ctx();
     setup_services();
     load_token_cache();
