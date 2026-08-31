@@ -25,6 +25,7 @@
 static std::string g_host = "127.0.0.1";
 static std::string g_hostPort = "8080";
 static std::string g_guestPort = "8080";
+static std::string g_guestHost = "0.0.0.0";
 static std::string g_memory = "512";
 static std::string g_smp = "2";
 static std::string g_forcedAccel;
@@ -288,6 +289,7 @@ int main(int argc, char** argv) {
     g_host = getEnv("LITE_QEMU_HOST", "127.0.0.1");
     g_hostPort = getEnv("HOST_PORT", "8080");
     g_guestPort = getEnv("GUEST_PORT", "8080");
+    g_guestHost = getEnv("LITE_GUEST_HOST", "0.0.0.0");
     g_memory = getEnv("MEMORY", "512");
     g_smp = getEnv("SMP", "2");
     g_forcedAccel = getEnv("LITE_QEMU_ACCEL", "");
@@ -297,12 +299,14 @@ int main(int argc, char** argv) {
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
         bool wantsValue = (a == "--host" || a == "--host-port" || a == "--guest-port" ||
-                           a == "--memory" || a == "--smp" || a == "--accel" || a == "--qemu-bin");
+                           a == "--guest-host" || a == "--memory" || a == "--smp" ||
+                           a == "--accel" || a == "--qemu-bin");
         if (wantsValue && i + 1 < argc) {
             std::string v = argv[++i];
             if (a == "--host") g_host = v;
             else if (a == "--host-port") g_hostPort = v;
             else if (a == "--guest-port") g_guestPort = v;
+            else if (a == "--guest-host") g_guestHost = v;
             else if (a == "--memory") g_memory = v;
             else if (a == "--smp") g_smp = v;
             else if (a == "--accel") g_forcedAccel = v;
@@ -319,7 +323,16 @@ int main(int argc, char** argv) {
     std::string qemuBin = locateQemu(assetDir);
 
     std::string argsFile = assetDir + "/.lite-qemu-args";
-    writeArgsFile(argsFile, liteArgs);
+    /* The guest lite must listen on 0.0.0.0 (or --guest-host) for QEMU's
+       user-mode hostfwd to reach it; append the launcher-managed settings so
+       they win over any user-supplied lite arguments. */
+    {
+        std::vector<std::string> guestArgs = liteArgs;
+        guestArgs.push_back("--base-dir"); guestArgs.push_back("/data");
+        guestArgs.push_back("--host");     guestArgs.push_back(g_guestHost);
+        guestArgs.push_back("--port");     guestArgs.push_back(g_guestPort);
+        writeArgsFile(argsFile, guestArgs);
+    }
 
     std::string accel = g_forcedAccel.empty() ? autoAccel() : g_forcedAccel;
     bool forced = !g_forcedAccel.empty();

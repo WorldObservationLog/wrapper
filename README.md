@@ -103,6 +103,7 @@ All responses use:
 | `--host <addr>` | `127.0.0.1` | host address the forwarded port binds to (`0.0.0.0` to expose) |
 | `--host-port <port>` | `8080` | host port |
 | `--guest-port <port>` | `8080` | guest port |
+| `--guest-host <addr>` | `0.0.0.0` | address the guest lite listens on (must be reachable by QEMU forwarding) |
 | `--memory <MB>` | `512` | guest memory in MB |
 | `--smp <N>` | `2` | guest CPU count |
 | `--accel <accel>` | auto | force acceleration (`kvm`, `hvf`, `whpx`, `tcg`) |
@@ -115,6 +116,7 @@ Environment variables (fallbacks; command-line flags take precedence):
 | `LITE_QEMU_HOST` | `127.0.0.1` | host address the forwarded port binds to |
 | `HOST_PORT` | `8080` | host port |
 | `GUEST_PORT` | `8080` | guest port |
+| `LITE_GUEST_HOST` | `0.0.0.0` | address the guest lite listens on |
 | `MEMORY` | `512` | guest memory in MB |
 | `SMP` | `2` | guest CPU count |
 | `LITE_QEMU_ACCEL` | auto | force acceleration |
