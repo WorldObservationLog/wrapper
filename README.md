@@ -1,8 +1,13 @@
-# wrapper-lite 1.0.0
+# wrapper-lite
 
 A lightweight single-port HTTP wrapper for Apple Music decryption.
 
 It provides five endpoints on one HTTP port: M3U8, Key, Lyrics, License, and WebPlayback.
+
+> **Recommended way to run**: use the `wrapper-lite-qemu` launcher — it boots a
+> self-contained QEMU guest and forwards the HTTP API to the host, so you don't
+> need a rooted device or a native chroot. See
+> [Run with QEMU](#run-with-qemu-recommended).
 
 ## Build
 
@@ -39,19 +44,31 @@ Build outputs:
 - Interactive prompt when a TTY is available.
 - With `--code-from-file`, the code is read from `data/2fa.txt`.
 
-## Run with QEMU
+## Run with QEMU (recommended)
+
+`wrapper-lite-qemu` is the recommended launcher. It boots the prebuilt guest
+(the `qemu/` assets) in QEMU and forwards the guest's HTTP service to the host,
+so no rooted device or native chroot is required. Prebuilt releases already
+bundle QEMU plus its firmware in `qemu/bin/` for Linux, macOS, Windows and
+Android.
 
 ```bash
+# one-time: build the launcher (or download a prebuilt release)
 c++ -std=c++11 -O2 -o wrapper-lite-qemu wrapper-lite-qemu.cpp
-./wrapper-lite-qemu --help
+
+# login first (forwards --login to the guest lite), then serve
+./wrapper-lite-qemu --login user:pass --code-from-file
 ./wrapper-lite-qemu
 ```
 
-QEMU assets live in `qemu/`. The launcher searches for QEMU in:
+The launcher locates the QEMU binary in this order:
 
-1. `QEMU_BIN`
+1. `--qemu-bin <path>` / `QEMU_BIN`
 2. `PATH`
-3. `qemu/bin/`
+3. `qemu/bin/` (bundled)
+
+See [QEMU launcher arguments](#qemu-launcher-arguments) for the full option
+list.
 
 ## Docker
 
@@ -89,12 +106,33 @@ All responses use:
 | `--host` | `127.0.0.1` | listen address |
 | `--port` | `8080` | listen port |
 | `--base-dir` | `data` | data directory |
-| `--device-info` | built-in | device info string |
+| `--device-info` | auto | override the entire device-info string (see [Device info](#device-info)) |
 | `--proxy` | — | proxy URL |
 | `--debug` | off | debug logging; disables SSL verify in Release |
 | `--log-level` | `info` | `debug`, `info`, `warn`, `error` |
 | `--log-file` | — | log file path |
 | `--token-refresh-interval` | `1800` | background refresh interval in seconds |
+
+## Device info
+
+`lite` identifies itself to Apple's servers with a device-info string of the
+form:
+
+```
+ClientIdentifier/VersionIdentifier/PlatformIdentifier/ProductVersion/DeviceModel/BuildVersion/LocaleIdentifier/LanguageIdentifier/AndroidID
+```
+
+Example: `Music/5.0.2/Android/10/Pixel 8/7663314/en-US/en-US/<android-id>`.
+
+The trailing `AndroidID` is derived automatically:
+
+- During `--login`, it is the FNV-1a 64-bit hash of the account username and is
+  persisted to `<base-dir>/ANDROID_ID`, so each account keeps a stable device
+  identity across runs.
+- In service mode (no username), the persisted `ANDROID_ID` is reused; if none
+  exists, a built-in default is used.
+
+Pass `--device-info <string>` to override the entire string explicitly.
 
 ## QEMU launcher arguments
 
