@@ -98,17 +98,21 @@ All responses use:
 
 ## QEMU launcher arguments
 
-| Argument | Description |
-|----------|-------------|
-| `--accel kvm` | force KVM (Linux) |
-| `--accel hvf` | force HVF (macOS) |
-| `--accel whpx` | force WHPX (Windows) |
-| `--accel tcg` | force TCG |
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `--host <addr>` | `127.0.0.1` | host address the forwarded port binds to (`0.0.0.0` to expose) |
+| `--host-port <port>` | `8080` | host port |
+| `--guest-port <port>` | `8080` | guest port |
+| `--memory <MB>` | `512` | guest memory in MB |
+| `--smp <N>` | `2` | guest CPU count |
+| `--accel <accel>` | auto | force acceleration (`kvm`, `hvf`, `whpx`, `tcg`) |
+| `--qemu-bin <path>` | auto | QEMU binary path |
 
-Environment variables:
+Environment variables (fallbacks; command-line flags take precedence):
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `LITE_QEMU_HOST` | `127.0.0.1` | host address the forwarded port binds to |
 | `HOST_PORT` | `8080` | host port |
 | `GUEST_PORT` | `8080` | guest port |
 | `MEMORY` | `512` | guest memory in MB |

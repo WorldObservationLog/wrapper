@@ -22,11 +22,13 @@
 #include <mach-o/dyld.h>
 #endif
 
+static std::string g_host = "127.0.0.1";
 static std::string g_hostPort = "8080";
 static std::string g_guestPort = "8080";
 static std::string g_memory = "512";
 static std::string g_smp = "2";
 static std::string g_forcedAccel;
+static std::string g_qemuBin;
 
 static std::string getEnv(const char* name, const std::string& def) {
     const char* v = std::getenv(name);
@@ -96,8 +98,7 @@ static bool findOnPath(const std::string& name, std::string& out) {
 }
 
 static std::string locateQemu(const std::string& dir) {
-    const char* forced = std::getenv("QEMU_BIN");
-    if (forced && *forced) return forced;
+    if (!g_qemuBin.empty()) return g_qemuBin;
     std::string q = qemuName();
     std::string out;
     if (findOnPath(q, out)) return out;
@@ -264,7 +265,7 @@ static std::vector<std::string> buildQemuArgs(const std::string& qemuBin,
     args.push_back("stdio");
     args.push_back("-no-reboot");
     args.push_back("-nic");
-    args.push_back("user,model=e1000,hostfwd=tcp:127.0.0.1:" + g_hostPort + "-:" + g_guestPort);
+    args.push_back("user,model=e1000,hostfwd=tcp:" + g_host + ":" + g_hostPort + "-:" + g_guestPort);
     args.push_back("-drive");
     args.push_back("file=" + dir + "/data.img,format=raw,if=virtio");
     std::ifstream af(argsFile);
@@ -283,17 +284,29 @@ static int runQemu(const std::string& qemuBin, const std::string& accel,
 }
 
 int main(int argc, char** argv) {
-    g_hostPort = getEnv("HOST_PORT", g_hostPort);
-    g_guestPort = getEnv("GUEST_PORT", g_guestPort);
-    g_memory = getEnv("MEMORY", g_memory);
-    g_smp = getEnv("SMP", g_smp);
+    /* Environment variables remain as fallbacks; command-line flags win. */
+    g_host = getEnv("LITE_QEMU_HOST", "127.0.0.1");
+    g_hostPort = getEnv("HOST_PORT", "8080");
+    g_guestPort = getEnv("GUEST_PORT", "8080");
+    g_memory = getEnv("MEMORY", "512");
+    g_smp = getEnv("SMP", "2");
     g_forcedAccel = getEnv("LITE_QEMU_ACCEL", "");
+    g_qemuBin = getEnv("QEMU_BIN", "");
 
     std::vector<std::string> liteArgs;
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
-        if (a == "--accel" && i + 1 < argc) {
-            g_forcedAccel = argv[++i];
+        bool wantsValue = (a == "--host" || a == "--host-port" || a == "--guest-port" ||
+                           a == "--memory" || a == "--smp" || a == "--accel" || a == "--qemu-bin");
+        if (wantsValue && i + 1 < argc) {
+            std::string v = argv[++i];
+            if (a == "--host") g_host = v;
+            else if (a == "--host-port") g_hostPort = v;
+            else if (a == "--guest-port") g_guestPort = v;
+            else if (a == "--memory") g_memory = v;
+            else if (a == "--smp") g_smp = v;
+            else if (a == "--accel") g_forcedAccel = v;
+            else if (a == "--qemu-bin") g_qemuBin = v;
         } else {
             liteArgs.push_back(a);
         }
@@ -311,8 +324,8 @@ int main(int argc, char** argv) {
     std::string accel = g_forcedAccel.empty() ? autoAccel() : g_forcedAccel;
     bool forced = !g_forcedAccel.empty();
 
-    std::fprintf(stderr, "[run] starting wrapper-lite guest (port %s -> %s, mem %sMB)\n",
-                 g_hostPort.c_str(), g_guestPort.c_str(), g_memory.c_str());
+    std::fprintf(stderr, "[run] starting wrapper-lite guest (host %s, port %s -> %s, mem %sMB)\n",
+                 g_host.c_str(), g_hostPort.c_str(), g_guestPort.c_str(), g_memory.c_str());
     if (!liteArgs.empty()) std::fprintf(stderr, "[run] forwarding %zu argument(s) to wrapper-lite\n", liteArgs.size());
 
     int rc = runQemu(qemuBin, accel, assetDir, argsFile);
