@@ -30,4 +30,4 @@ RUN chmod +x /app/entrypoint.sh /app/wrapper-lite-rootless
 
 CMD ["/app/entrypoint.sh"]
 
-EXPOSE 8080
+EXPOSE 12340

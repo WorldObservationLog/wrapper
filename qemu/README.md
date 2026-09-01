@@ -66,8 +66,8 @@ Windows WHPX uses:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `HOST_PORT` | `8080` | host port |
-| `GUEST_PORT` | `8080` | guest port |
+| `HOST_PORT` | `12340` | host port |
+| `GUEST_PORT` | `12340` | guest port |
 | `MEMORY` | `512` | guest memory in MB |
 | `SMP` | `2` | guest CPU count |
 | `LITE_QEMU_ACCEL` | auto | force acceleration |

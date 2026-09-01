@@ -33,7 +33,7 @@ extern "C" void freeifaddrs(struct ifaddrs* __ptr) { }
 
 /* ---- Configuration ---- */
 static std::string g_host = "127.0.0.1";
-static int g_port = 8080;
+static int g_port = 12340;
 static bool g_login_only = false;
 static std::string g_login_credentials;
 static std::string g_proxy;
@@ -442,7 +442,7 @@ static void signal_worker() {
 /* ============================== */
 
 static void print_usage() {
-    LOG_INFO("usage: lite [--login user:pass] [--host 127.0.0.1] [--port 8080]");
+    LOG_INFO("usage: lite [--login user:pass] [--host 127.0.0.1] [--port 12340]");
     LOG_INFO("            [--device-info STR] [--base-dir data] [--proxy URL] [--debug]");
     LOG_INFO("            [--log-level debug|info|warn|error] [--log-file PATH]");
     LOG_INFO("            [--token-refresh-interval SECONDS]");

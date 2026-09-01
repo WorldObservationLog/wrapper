@@ -23,8 +23,8 @@
 #endif
 
 static std::string g_host = "127.0.0.1";
-static std::string g_hostPort = "8080";
-static std::string g_guestPort = "8080";
+static std::string g_hostPort = "12340";
+static std::string g_guestPort = "12340";
 static std::string g_guestHost = "0.0.0.0";
 static std::string g_memory = "512";
 static std::string g_smp = "2";
@@ -287,8 +287,8 @@ static int runQemu(const std::string& qemuBin, const std::string& accel,
 int main(int argc, char** argv) {
     /* Environment variables remain as fallbacks; command-line flags win. */
     g_host = getEnv("LITE_QEMU_HOST", "127.0.0.1");
-    g_hostPort = getEnv("HOST_PORT", "8080");
-    g_guestPort = getEnv("GUEST_PORT", "8080");
+    g_hostPort = getEnv("HOST_PORT", "12340");
+    g_guestPort = getEnv("GUEST_PORT", "12340");
     g_guestHost = getEnv("LITE_GUEST_HOST", "0.0.0.0");
     g_memory = getEnv("MEMORY", "512");
     g_smp = getEnv("SMP", "2");

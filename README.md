@@ -36,7 +36,7 @@ Build outputs:
 ./wrapper-lite-rootless --login user:pass --code-from-file --base-dir /data
 
 # Start the HTTP service
-./wrapper-lite-rootless --base-dir /data --host 0.0.0.0 --port 8080
+./wrapper-lite-rootless --base-dir /data --host 0.0.0.0 --port 12340
 ```
 
 2FA code:
@@ -74,7 +74,7 @@ list.
 
 ```bash
 docker build -t wrapper-lite:local .
-docker run --privileged -p 8080:8080 \
+docker run --privileged -p 12340:12340 \
   -v ./rootfs/data:/app/rootfs/data \
   -e USERNAME=... -e PASSWORD=... \
   wrapper-lite:local
@@ -104,7 +104,7 @@ All responses use:
 | `--login user:pass` | — | login, cache tokens, then exit |
 | `--code-from-file` | off | read 2FA code from file |
 | `--host` | `127.0.0.1` | listen address |
-| `--port` | `8080` | listen port |
+| `--port` | `12340` | listen port |
 | `--base-dir` | `data` | data directory |
 | `--device-info` | auto | override the entire device-info string (see [Device info](#device-info)) |
 | `--proxy` | — | proxy URL |
@@ -139,8 +139,8 @@ Pass `--device-info <string>` to override the entire string explicitly.
 | Argument | Default | Description |
 |----------|---------|-------------|
 | `--host <addr>` | `127.0.0.1` | host address the forwarded port binds to (`0.0.0.0` to expose) |
-| `--host-port <port>` | `8080` | host port |
-| `--guest-port <port>` | `8080` | guest port |
+| `--host-port <port>` | `12340` | host port |
+| `--guest-port <port>` | `12340` | guest port |
 | `--guest-host <addr>` | `0.0.0.0` | address the guest lite listens on (must be reachable by QEMU forwarding) |
 | `--memory <MB>` | `512` | guest memory in MB |
 | `--smp <N>` | `2` | guest CPU count |
@@ -152,8 +152,8 @@ Environment variables (fallbacks; command-line flags take precedence):
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `LITE_QEMU_HOST` | `127.0.0.1` | host address the forwarded port binds to |
-| `HOST_PORT` | `8080` | host port |
-| `GUEST_PORT` | `8080` | guest port |
+| `HOST_PORT` | `12340` | host port |
+| `GUEST_PORT` | `12340` | guest port |
 | `LITE_GUEST_HOST` | `0.0.0.0` | address the guest lite listens on |
 | `MEMORY` | `512` | guest memory in MB |
 | `SMP` | `2` | guest CPU count |

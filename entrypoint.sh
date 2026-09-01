@@ -23,12 +23,12 @@ if [ ! -f "$TOKEN_DB_PATH" ]; then
     --code-from-file \
     --base-dir /data \
     --host 0.0.0.0 \
-    --port 8080 \
+    --port 12340 \
     "$@"
 fi
 
 exec ./wrapper-lite-rootless \
   --base-dir /data \
   --host 0.0.0.0 \
-  --port 8080 \
+  --port 12340 \
   "$@"
