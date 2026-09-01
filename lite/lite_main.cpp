@@ -100,7 +100,9 @@ static std::string json_error(int code, const std::string& msg) {
 #include "storefront_ids.inc"
 
 /* The Android lib writes storefront identifiers like "143462-1,31"; the Apple
- * Music web API expects a two-letter country code ("jp"). */
+ * Music web API expects a two-letter country code ("jp").  Unknown IDs map to
+ * the empty string (not a made-up default) so /status reflects whether the
+ * account is actually logged in. */
 static std::string normalize_storefront_id(const std::string& raw) {
     if (raw.empty()) return "";
     if (raw.size() == 2 && std::isalpha((unsigned char)raw[0]) &&
@@ -108,8 +110,7 @@ static std::string normalize_storefront_id(const std::string& raw) {
         return raw;
     }
     std::string first = raw.substr(0, raw.find('-'));
-    std::string code = builtin_storefront_region(first);
-    return code.empty() ? "us" : code;
+    return builtin_storefront_region(first);
 }
 
 /* ---- Device info / Android ID ---- */
@@ -163,7 +164,7 @@ static void load_token_cache() {
     if (g_tokens.music_token.empty()) g_tokens.music_token = get_music_token();
     if (g_tokens.storefront_id.empty()) g_tokens.storefront_id = get_storefront();
     g_tokens.storefront_id = normalize_storefront_id(g_tokens.storefront_id);
-    if (g_tokens.storefront_id.empty()) g_tokens.storefront_id = "us";
+    /* leave storefront empty when not logged in; do not invent "us" */
 }
 
 /* Caller must hold g_tokens_mutex. */
@@ -184,7 +185,7 @@ static WebTokens get_web_tokens() {
     if (g_tokens.music_token.empty()) g_tokens.music_token = get_music_token();
     if (g_tokens.storefront_id.empty()) g_tokens.storefront_id = get_storefront();
     g_tokens.storefront_id = normalize_storefront_id(g_tokens.storefront_id);
-    if (g_tokens.storefront_id.empty()) g_tokens.storefront_id = "us";
+    /* leave storefront empty when not logged in; do not invent "us" */
 
     auto now = std::chrono::steady_clock::now();
     if (g_web_dev_token.empty()) {
@@ -412,7 +413,6 @@ static void token_refresh_worker() {
             if (!sf.empty()) {
                 g_tokens.storefront_id = normalize_storefront_id(sf);
             }
-            if (g_tokens.storefront_id.empty()) g_tokens.storefront_id = "us";
             if (!dev.empty()) g_tokens.dev_token = dev;
             if (!music.empty()) g_tokens.music_token = music;
             save_token_cache();
@@ -563,10 +563,9 @@ int main(int argc, char* argv[]) {
             return c;
         };
         g_tokens.base_dir = g_base_dir;
-        g_tokens.storefront_id = readFile(std::string(g_base_dir) + "/STOREFRONT_ID");
+        g_tokens.storefront_id = normalize_storefront_id(readFile(std::string(g_base_dir) + "/STOREFRONT_ID"));
         g_tokens.dev_token = readFile(std::string(g_base_dir) + "/DEV_TOKEN");
         g_tokens.music_token = readFile(std::string(g_base_dir) + "/MUSIC_TOKEN");
-        if (g_tokens.storefront_id.empty()) g_tokens.storefront_id = "us";
         if (g_tokens.dev_token.empty() || g_tokens.music_token.empty()) {
             LOG_ERROR("failed to cache account info");
             return 1;
