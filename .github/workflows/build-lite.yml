@@ -225,12 +225,12 @@ jobs:
               while read -r so; do
                 [ -f "$so" ] && cp -n "$so" dist/qemu/bin/ || true
               done
-            # bundle QEMU accel/device modules (QEMU_MODULE_DIR points here)
-            MODDIR="$(dirname "$(command -v qemu-system-x86_64)")/../lib/x86_64-linux-gnu/qemu"
-            [ -d "$MODDIR" ] || MODDIR="$(find /usr/lib /usr/lib64 -type d -name qemu 2>/dev/null | head -1)"
-            if [ -n "$MODDIR" ] && [ -d "$MODDIR" ]; then
-              cp -R "$MODDIR/." dist/qemu/bin/
-            fi
+            # bundle QEMU accel/device modules (QEMU_MODULE_DIR points here).
+            # Resolve the module dir by locating an accel .so in the installed
+            # tree; the dir name differs between x86_64/aarch64 runners and
+            # the modules may live in a different package than the binary.
+            MODDIR="$(find /usr/lib /usr/lib64 -type f -name 'accel-*.so' 2>/dev/null | head -1 | xargs -r dirname)"
+            [ -n "$MODDIR" ] && [ -d "$MODDIR" ] && cp -R "$MODDIR/." dist/qemu/bin/ || true
           fi
 
       - name: Copy QEMU binary (Windows)
