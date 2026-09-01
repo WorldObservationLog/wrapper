@@ -232,6 +232,12 @@ static std::vector<std::string> buildQemuArgs(const std::string& qemuBin,
     const char* existing = std::getenv("LD_LIBRARY_PATH");
     if (existing && *existing) libPath = libPath + ":" + existing;
     setenv("LD_LIBRARY_PATH", libPath.c_str(), 1);
+    /* QEMU accel/device modules (accel-tcg-*.so, ...) are looked up via the
+       QEMU_MODULE_DIR env var; point it at the bundled modules when present. */
+    if (fileExists(dir + "/bin/accel-tcg-x86_64.so") ||
+        fileExists(dir + "/bin/accel-tcg-i386.so")) {
+        setenv("QEMU_MODULE_DIR", (dir + "/bin").c_str(), 1);
+    }
 #endif
     args.push_back("-accel");
     if (accel == "whpx") {

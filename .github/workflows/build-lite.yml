@@ -225,6 +225,12 @@ jobs:
               while read -r so; do
                 [ -f "$so" ] && cp -n "$so" dist/qemu/bin/ || true
               done
+            # bundle QEMU accel/device modules (QEMU_MODULE_DIR points here)
+            MODDIR="$(dirname "$(command -v qemu-system-x86_64)")/../lib/x86_64-linux-gnu/qemu"
+            [ -d "$MODDIR" ] || MODDIR="$(find /usr/lib /usr/lib64 -type d -name qemu 2>/dev/null | head -1)"
+            if [ -n "$MODDIR" ] && [ -d "$MODDIR" ]; then
+              cp -R "$MODDIR/." dist/qemu/bin/
+            fi
           fi
 
       - name: Copy QEMU binary (Windows)
