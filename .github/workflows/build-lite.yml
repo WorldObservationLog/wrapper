@@ -209,7 +209,8 @@ jobs:
         if: runner.os != 'Windows'
         shell: bash
         run: |
-          cp "$(command -v qemu-system-x86_64)" dist/qemu/bin/
+          set +e  # each bundle sub-step is best-effort; report but never fail
+          cp "$(command -v qemu-system-x86_64)" dist/qemu/bin/ 2>/dev/null || true
           if [[ "${{ runner.os }}" == "macOS" ]]; then
             cp -R "$(brew --prefix)/share/qemu/"* dist/qemu/bin/ 2>/dev/null || true
           else
@@ -220,17 +221,19 @@ jobs:
             cp -R /usr/lib/ipxe/qemu/. dist/qemu/bin/ 2>/dev/null || true
             # bundle the dynamically-linked shared libraries the QEMU binary
             # needs (the launcher adds dist/qemu/bin to LD_LIBRARY_PATH)
-            ldd "$(command -v qemu-system-x86_64)" | \
+            ldd "$(command -v qemu-system-x86_64)" 2>/dev/null | \
               awk '/=> \// {print $3}' | sort -u | \
               while read -r so; do
-                [ -f "$so" ] && cp -n "$so" dist/qemu/bin/ || true
+                [ -f "$so" ] && cp -n "$so" dist/qemu/bin/ 2>/dev/null || true
               done
             # bundle QEMU accel/device modules (QEMU_MODULE_DIR points here).
             # Resolve the module dir by locating an accel .so in the installed
             # tree; the dir name differs between x86_64/aarch64 runners and
             # the modules may live in a different package than the binary.
-            MODDIR="$(find /usr/lib /usr/lib64 -type f -name 'accel-*.so' 2>/dev/null | head -1 | xargs -r dirname)"
-            [ -n "$MODDIR" ] && [ -d "$MODDIR" ] && cp -R "$MODDIR/." dist/qemu/bin/ || true
+            MODDIR="$(find /usr/lib /usr/lib64 -type f -name 'accel-*.so' 2>/dev/null | xargs -r dirname | sort -u | head -1)"
+            if [ -n "$MODDIR" ] && [ -d "$MODDIR" ]; then
+              cp -R "$MODDIR/." dist/qemu/bin/ 2>/dev/null || true
+            fi
           fi
 
       - name: Copy QEMU binary (Windows)
