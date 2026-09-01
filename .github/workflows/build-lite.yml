@@ -218,6 +218,13 @@ jobs:
             cp -R /usr/share/qemu/. dist/qemu/bin/ 2>/dev/null || true
             cp -R /usr/share/seabios/. dist/qemu/bin/ 2>/dev/null || true
             cp -R /usr/lib/ipxe/qemu/. dist/qemu/bin/ 2>/dev/null || true
+            # bundle the dynamically-linked shared libraries the QEMU binary
+            # needs (the launcher adds dist/qemu/bin to LD_LIBRARY_PATH)
+            ldd "$(command -v qemu-system-x86_64)" | \
+              awk '/=> \// {print $3}' | sort -u | \
+              while read -r so; do
+                [ -f "$so" ] && cp -n "$so" dist/qemu/bin/ || true
+              done
           fi
 
       - name: Copy QEMU binary (Windows)

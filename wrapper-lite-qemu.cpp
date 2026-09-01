@@ -224,6 +224,15 @@ static std::vector<std::string> buildQemuArgs(const std::string& qemuBin,
        Android (bundled from the Termux qemu packages). */
     args.push_back("-L");
     args.push_back(dir + "/bin");
+#ifndef _WIN32
+    /* The bundled QEMU may be dynamically linked against the shared
+       libraries we ship next to it in qemu/bin; make the loader find them
+       without requiring a system install. */
+    std::string libPath = dir + "/bin";
+    const char* existing = std::getenv("LD_LIBRARY_PATH");
+    if (existing && *existing) libPath = libPath + ":" + existing;
+    setenv("LD_LIBRARY_PATH", libPath.c_str(), 1);
+#endif
     args.push_back("-accel");
     if (accel == "whpx") {
         args.push_back("whpx,kernel-irqchip=off");
