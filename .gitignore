@@ -86,16 +86,15 @@ dkms.conf
 *.exe
 *.out
 *.app
-wrapper
 
-# Directory skeleton is preserved, but whatever files are generated
-# are confidential and should not be leaked, thus ignore them.
 rootfs/
-
-# CMake related cruft
-CMakeCache.txt
-CMakeFiles/
+.vscode/
+wrapper
+wrapper-rootless
+rootfs/system/bin/linker64
 build/
-
-# Android SDK
 android-ndk-r23b/
+
+# Enviroment Variables
+.env
+!.env.example

@@ -1,3 +1,26 @@
+/*
+ * main.c — Apple Music FairPlay 解密 wrapper 的 Android 层主程序
+ * (运行在 rootfs chroot 内, 由 wrapper.c / wrapper-rootless.c 启动)
+ *
+ * 架构:
+ *   持有效 Apple Music 订阅的账户, 通过 Android 原生库
+ *   (libandroidappmusic.so / libstoreservicescore.so / libmediaplatform.so /
+ *    libCoreLSKD.so) 完成登录 + FairPlay 密钥派生, 再把解密能力暴露为 4 个本地 TCP 服务:
+ *
+ *     10020 decrypt-port  样本解密服务 (CBC): 收 [1B len][adam][1B len][uri]
+ *                          再循环收 [4B size][密文] → NfcR 解密 → 写回等长明文
+ *     20020 m3u8-port     歌曲流地址服务:    收 [1B len][adamId] → 返回 M3U8 URL
+ *     30020 account-port  账号信息 JSON 服务
+ *     40020 key-port      key 服务 (HTTP):  ?adamId=&uri= → 返回
+ *                          {contentKey, ctx, state, rcx/rax/rdx/r9/rbp} 解密模板
+ *
+ *   40020 的 ctx/state/寄存器模板由 R1 入口 (libCoreLSKD+0x1d5709) 的 Dobby hook
+ *   捕获, 供纯 Python 离线解密器 (decryption/src/decrypt_tool.py --content-server)
+ *   对任意新音轨做完全离线解密。见 decryption/docs/offline-decryption.md。
+ *
+ * 构建: CMakeLists.txt (NDK clang; cmake -DMYRELEASE=ON 切换 Release) — R1 key-server
+ *   hook (Dobby) 两种模式都编译; curl/log debug hook 仅 Debug
+ */
 #include <errno.h>
 #include <setjmp.h>
 #include <signal.h>
@@ -7,6 +30,7 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <stdarg.h>
+#include <ctype.h>
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -15,11 +39,9 @@
 
 #include "import.h"
 #include "cmdline.h"
-#include "cjson/cjson.h"
-#ifndef MyRelease
-#include "subhook/subhook.c"
-#include "subhook/subhook.h"
-#endif
+#include "cJSON.h"
+#include "dobby.h"
+#include <link.h>
 
 static struct shared_ptr apInf;
 static uint8_t leaseMgr[16];
@@ -31,36 +53,37 @@ int decryptCount = 1000;
 int offlineFlag;
 char *device_infos[9];
 
-// Account info cache
 static char *g_storefront_id = NULL;
 static char *g_dev_token = NULL;
 static char *g_music_token = NULL;
 
 #ifndef MyRelease
+static int (*orig_debug_log_enabled)(void);
+static int (*orig_android_log_print)(int prio, const char *tag, const char *fmt, ...);
+static int (*orig_android_log_write)(int prio, const char *tag, const char *text);
+static int (*orig_curl_easy_setopt)(void *curl, int option, ...);
+
 int32_t CURLOPT_SSL_VERIFYPEER = 64;
 int32_t CURLOPT_SSL_VERIFYHOST = 81;
 int32_t CURLOPT_PINNEDPUBLICKEY = 10230;
+int32_t CURLOPT_VERBOSE = 43;
 
-subhook_t curl_hook;
-
-void curl_easy_setopt_hook(void *curl, int32_t option, ...) {
+int curl_easy_setopt_hook(void *curl, int32_t option, ...) {
     va_list args;
     va_start(args, option);
     void* param = va_arg(args, void*);
-    
-    subhook_remove(curl_hook);
+    va_end(args);
  
     if (option == CURLOPT_SSL_VERIFYPEER || 
         option == CURLOPT_SSL_VERIFYHOST || 
         option == CURLOPT_PINNEDPUBLICKEY) {
-        curl_easy_setopt(curl, option, 0L);
-        printf("[+] hooked curl_easy_setopt %d\n", option);
-    } else {
-        curl_easy_setopt(curl, option, param);
+        fprintf(stderr, "[+] hooked curl_easy_setopt %d\n", option);
+        orig_curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
+        return orig_curl_easy_setopt(curl, option, 0L);
+    }  else {
+        return orig_curl_easy_setopt(curl, option, param);
     }
  
-    va_end(args);
-    subhook_install(curl_hook);
 }
 
 int android_log_print_hook(int prio, const char *tag, const char *fmt, ...) {
@@ -69,42 +92,33 @@ int android_log_print_hook(int prio, const char *tag, const char *fmt, ...) {
     va_start(args, fmt);
     vsnprintf(log_buffer, sizeof(log_buffer), fmt, args);
     va_end(args);
-    printf("[%s] %s\n", tag, log_buffer);
+    fprintf(stderr, "[%s] %s\n", tag, log_buffer);
     return 0;
 }
 
 int android_log_write_hook(int prio, const char *tag, const char *text) {
-    printf("[%s] %s\n", tag, text);
+    fprintf(stderr, "[%s] %s\n", tag, text);
     return 0;
 }
 
-void DumpHex(const void* data, size_t size) {
-	char ascii[17];
-	size_t i, j;
-	ascii[16] = '\0';
-	for (i = 0; i < size; ++i) {
-		printf("%02X ", ((unsigned char*)data)[i]);
-		if (((unsigned char*)data)[i] >= ' ' && ((unsigned char*)data)[i] <= '~') {
-			ascii[i % 16] = ((unsigned char*)data)[i];
-		} else {
-			ascii[i % 16] = '.';
-		}
-		if ((i+1) % 8 == 0 || i+1 == size) {
-			printf(" ");
-			if ((i+1) % 16 == 0) {
-				printf("|  %s \n", ascii);
-			} else if (i+1 == size) {
-				ascii[(i+1) % 16] = '\0';
-				if ((i+1) % 16 <= 8) {
-					printf(" ");
-				}
-				for (j = (i+1) % 16; j < 16; ++j) {
-					printf("   ");
-				}
-				printf("|  %s \n", ascii);
-			}
-		}
-	}
+static uint8_t allDebug() { return 1; }
+
+void install_hooks() {
+    DobbyHook((void*)_ZN13mediaplatform26DebugLogEnabledForPriorityENS_11LogPriorityE,
+              (void*)allDebug,
+              (void**)&orig_debug_log_enabled);
+
+    DobbyHook((void*)__android_log_print, 
+              (void*)android_log_print_hook, 
+              (void**)&orig_android_log_print);
+
+    DobbyHook((void*)__android_log_write, 
+              (void*)android_log_write_hook, 
+              (void**)&orig_android_log_write);
+
+    DobbyHook((void*)curl_easy_setopt,
+              (void*)curl_easy_setopt_hook,
+              (void**)&orig_curl_easy_setopt);
 }
 #endif
 
@@ -262,9 +276,6 @@ static void credentialHandler(struct shared_ptr *credReqHandler,
         apInf.obj, &credResp);
 }
 
-#ifndef MyRelease
-static uint8_t allDebug() { return 1; }
-#endif
 
 static inline void init() {
     // srand(time(0));
@@ -395,7 +406,21 @@ inline static uint8_t login(struct shared_ptr reqCtx) {
     const int respType =
         _ZNK17storeservicescore20AuthenticateResponse12responseTypeEv(
             resp->obj);
-    fprintf(stderr, "[.] response type %d\n", respType);
+    if (respType != 6) {
+        const char *customer_msg = std_string_data(
+            _ZNK17storeservicescore20AuthenticateResponse15customerMessageEv(resp->obj));
+        if (customer_msg && *customer_msg)
+            fprintf(stderr, "[!] server message: %s\n", customer_msg);
+
+        struct shared_ptr *err = _ZNK17storeservicescore20AuthenticateResponse5errorEv(resp->obj);
+        if (err != NULL && err->obj != NULL) {
+            int code = _ZNK17storeservicescore19StoreErrorCondition9errorCodeEv(err->obj);
+            const char *what = _ZNK17storeservicescore19StoreErrorCondition4whatEv(err->obj);
+            fprintf(stderr, "[!] auth error: code=%d, message=%s\n", code, what ? what : "none");
+        } else {
+            fprintf(stderr, "[!] auth failed: response type %d\n", respType);
+        }
+    }
     return respType == 6;
     // struct shared_ptr subStatMgr;
     // _ZN20androidstoreservices30SVSubscriptionStatusMgrFactory6createEv(&subStatMgr);
@@ -431,9 +456,23 @@ static inline void writefull(const int connfd, void *const buf,
     }
 }
 
-static void *FHinstance = NULL;
-static void *preshareCtx = NULL;
+static void *FHinstance = NULL;   /* SVFootHillSessionCtrl 单例 (会话持有者) */
+static void *preshareCtx = NULL;  /* prefetch 上下文缓存 (adam=="0" 时复用) */
 
+/*
+ * 派生某 (adam, uri) 的 kdContext (解密上下文)。
+ *
+ * 流程:
+ *   getPersistentKey() 从 Apple 获取持久密钥 (SVFootHillPKey, 首个字段 ckc=contentKey,
+ *   离线场景由服务端账户派生) → decryptContext(persistK) 得到 SVFootHillPContext →
+ *   .kdContext() 返回实际 kdContext 指针。
+ *
+ * 注意:
+ *   - 返回的是 void** (指向 kdContext 指针), 调用方需解引用 (如 NfcR(*kdContext,...))。
+ *   - adam=="0" 走 prefetch 缓存路径。
+ *   - 每次调用都会重新 getPersistentKey (contentKey 每次会话会变),
+ *     但 decryptContext 派生的 kdContext 是 per-track 稳定的。
+ */
 inline static void *getKdContext(const char *const adam,
                                  const char *const uri) {
     uint8_t isPreshare = (strcmp("0", adam) == 0);
@@ -460,6 +499,17 @@ inline static void *getKdContext(const char *const adam,
     if (persistK.obj == NULL)
         return NULL;
 
+    // DUMP persistentKey (SVFootHillPKey: first field is std::string ckc)
+    {
+        union std_string *pkey = (union std_string *)persistK.obj;
+        const char *pdata = std_string_data(pkey);
+        fprintf(stderr, "[+] DUMP persistentKey: %s\n", pdata);
+        char *pkey_path = strcat_b(args_info.base_dir_arg, "/persistent_key.txt");
+        FILE *kf = fopen(pkey_path, "w");
+        if (kf) { fprintf(kf, "%s", pdata); fclose(kf); }
+        free(pkey_path);
+    }
+
     struct shared_ptr SVFootHillPContext;
     _ZN21SVFootHillSessionCtrl14decryptContextERKNSt6__ndk112basic_stringIcNS0_11char_traitsIcEENS0_9allocatorIcEEEERKN11SVDecryptor15SVDecryptorTypeERKb(
         &SVFootHillPContext, FHinstance, persistK.obj);
@@ -474,15 +524,32 @@ inline static void *getKdContext(const char *const adam,
     return kdContext;
 }
 
+/*
+ * 刷新解密会话: 重新请求播放租约 + 重置所有上下文 + 重建 prefetch 上下文。
+ * 在 40020 key server 捕获 content 模板前调用, 把 FHinstance 会话归一化到
+ * 与真实解密流程一致的状态 (否则 standalone 的 ctx/r1_entry 会不一致)。
+ */
 void refresh_decrypt_ctx() {
     uint8_t autom = 1;
     _ZN22SVPlaybackLeaseManager12requestLeaseERKb(leaseMgr, &autom);
     _ZN21SVFootHillSessionCtrl16resetAllContextsEv(FHinstance);
     preshareCtx = NULL;
     preshareCtx = getKdContext("0", "skd://itunes.apple.com/P000000000/s1/e1");
-    printf("[!] refreshed context\n");
+    fprintf(stderr, "[!] refreshed context\n");
 }
 
+/*
+ * 10020 样本解密服务主循环 (与 main.go 测试协议对应):
+ *   外层按 (adam, uri) 建立解密上下文 (每首歌一次连接, 每首歌 prefetch+content 两轮),
+ *   内层循环收 [4B LE size][密文] → NfcR 解密 → 写回等长明文, size<=0 结束内层。
+ * 协议:
+ *   [1B len]["0"] + [1B len][prefetchKey]           → prefetch 上下文
+ *   [4B size][sample0 密文] → 明文
+ *   {0,0,0,0}                                        → 内层 size=0, 回外层
+ *   [1B len][adamID] + [1B len][contentKeyURI]      → content 上下文
+ *   [4B size][sample1 密文] → 明文
+ *   {0,0,0,0,0}                                      → 收尾关闭
+ */
 void handle(const int connfd) {
     while (1) {
         uint8_t adamSize;
@@ -673,6 +740,10 @@ const char* get_m3u8_method_play(uint8_t leaseMgr[16], unsigned long adam) {
     }
 }
 
+/*
+ * 20020 M3U8 流地址服务: 收 [1B len][adamId 数字串] → 返回该歌的 M3U8 URL + 换行。
+ * 由 get_m3u8_method_download/play 经 PlaybackAsset 从 Apple 获取。
+ */
 void handle_m3u8(const int connfd) {
     while (1)
     {
@@ -754,6 +825,339 @@ static inline void *new_socket_m3u8(void *args) {
         if (close(connfd) == -1) {
             perror("close");
         }
+    }
+}
+
+/* ==================== Key delivery HTTP service ====================
+ * GET /key?adamId=<id>[&uri=<skd://...>]
+ *   返回 { "adamId":..., "keyUri":..., "contentKey":... }
+ *   contentKey = 离线 persistentKey（服务端持账号派生，不含账号凭据）
+ */
+
+static char *url_decode(const char *src) {
+    size_t len = strlen(src);
+    char *dst = malloc(len + 1);
+    if (!dst) return NULL;
+    size_t j = 0;
+    for (size_t i = 0; i < len; i++) {
+        if (src[i] == '%' && i + 2 < len && isxdigit((unsigned char)src[i+1]) && isxdigit((unsigned char)src[i+2])) {
+            char hi = src[i+1], lo = src[i+2];
+            int h = (hi <= '9') ? hi - '0' : (tolower((unsigned char)hi) - 'a' + 10);
+            int l = (lo <= '9') ? lo - '0' : (tolower((unsigned char)lo) - 'a' + 10);
+            dst[j++] = (char)((h << 4) | l);
+            i += 2;
+        } else {
+            dst[j++] = src[i];
+        }
+    }
+    dst[j] = '\0';
+    return dst;
+}
+
+static char *get_content_key(const char *adamId, const char *keyUri) {
+    union std_string defaultId = new_std_string(adamId);
+    union std_string keyUriStr = new_std_string(keyUri);
+    union std_string keyFormat = new_std_string("com.apple.streamingkeydelivery");
+    union std_string keyFormatVer = new_std_string("1");
+    union std_string serverUri = new_std_string("https://play.itunes.apple.com/WebObjects/MZPlay.woa/music/fps");
+    union std_string protocolType = new_std_string("simplified");
+    union std_string fpsCertStr = new_std_string(fairplayCert);
+
+    struct shared_ptr persistK = {.obj = NULL};
+    _ZN21SVFootHillSessionCtrl16getPersistentKeyERKNSt6__ndk112basic_stringIcNS0_11char_traitsIcEENS0_9allocatorIcEEEES8_S8_S8_S8_S8_S8_S8_(
+        &persistK, FHinstance, &defaultId, &defaultId, &keyUriStr, &keyFormat,
+        &keyFormatVer, &serverUri, &protocolType, &fpsCertStr);
+
+    if (persistK.obj == NULL)
+        return NULL;
+
+    /* SVFootHillPKey: first field is std::string ckc (= contentKey when offline) */
+    union std_string *pkey = (union std_string *)persistK.obj;
+    const char *data = std_string_data(pkey);
+    if (!data || !*data) return NULL;
+    return strdup(data);
+}
+
+static void key_json_error(const int connfd, const char *code, const char *msg) {
+    size_t body_len = strlen("{\"error\":\"\",\"code\":\"\"}") + strlen(msg) + strlen(code) + 4;
+    char *body = malloc(body_len);
+    if (!body) return;
+    snprintf(body, body_len, "{\"error\":\"%s\",\"code\":\"%s\"}", msg, code);
+    char *resp = malloc(512);
+    if (!resp) { free(body); return; }
+    snprintf(resp, 512, "HTTP/1.1 %s\r\nContent-Type: application/json\r\nContent-Length: %zu\r\nConnection: close\r\n\r\n",
+             strcmp(code, "400") == 0 ? "400 Bad Request" : "500 Internal Server Error", strlen(body));
+    writefull(connfd, resp, strlen(resp));
+    writefull(connfd, body, strlen(body));
+    free(resp); free(body);
+}
+
+
+/* =====================================================================
+ * content 解密模板捕获 (供 40020 key server 返回)
+ * ---------------------------------------------------------------------
+ * 背景: 纯 Python 离线解密器需要 (ctx, st_init, r1_entry) 三件套才能解密
+ *   content 样本。ctx = kdContext(0x8000B)，st_init = R1 入口初始状态
+ *   (rbp-0x2000 起 0x2100B)，r1_entry = R1 入口寄存器 (rcx/rax/rdx/r9/rbp)。
+ *   这些只在 R1 函数 (libCoreLSKD+0x1d5709) 入口那一刻存在，因此用 Dobby
+ *   在该入口下 hook，主动触发一次 NfcR 解密来捕获。
+ *
+ * R1 入口语义 (sub_1D5709, 见 decryption/src/round1_mid.py):
+ *   第一条指令 `movzx ecx, byte ptr [r9+rcx+2EE0h]`:
+ *     r9  = ctx 基址 (kdContext)          → dump 0x8000B
+ *     rcx = S-box 索引 (随密钥变化)        → r1_entry
+ *     rax = 另一入口常量 (随密钥变化)      → r1_entry
+ *     rsi = 块游标 (block0 时 == 8)       → 用于过滤只捕获 block 0
+ *     rbp = R1 栈帧 → rbp-0x2000 为初始状态 → dump 0x2100B
+ * ===================================================================== */
+static volatile void *g_cap_target = NULL;   /* 预留 (原按 r9 匹配, 后改为按 block0) */
+static volatile int g_cap_armed = 0;         /* 1=捕获窗口开启 */
+static volatile int g_cap_done = 0;          /* 1=已成功捕获 */
+static uint8_t g_cap_ctx[0x8000];            /* 捕获的 ctx */
+static uint8_t g_cap_state[0x2100];          /* 捕获的原始 state (rbp-0x2000) */
+static uint64_t g_cap_rcx, g_cap_rax, g_cap_rdx, g_cap_r9, g_cap_rbp;
+static int g_r1_hooked = 0;                  /* R1 hook 是否已安装 */
+
+/* R1 入口 Dobby hook 回调: 捕获 block0 的 ctx/state/寄存器到全局缓冲 */
+static void r1_capture_cb(RegisterContext *ctx, const HookEntryInfo *info) {
+    uint64_t r9 = ctx->general.regs.r9;
+    if (!g_cap_armed || g_cap_done) return;
+    if ((ctx->general.regs.rsi & 0xff) != 8) return;  /* 只捕获 block 0 (rsi==8) */
+    uint64_t rbp = ctx->general.regs.rbp;
+    memcpy(g_cap_ctx, (void *)(uintptr_t)r9, 0x8000);
+    memcpy(g_cap_state, (void *)(uintptr_t)(rbp - 0x2000), 0x2100);
+    g_cap_rcx = ctx->general.regs.rcx;
+    g_cap_rax = ctx->general.regs.rax;
+    g_cap_rdx = ctx->general.regs.rdx;
+    g_cap_r9 = r9;
+    g_cap_rbp = rbp;
+    g_cap_done = 1;
+}
+
+/* dl_iterate_phdr 回调: 定位 libCoreLSKD.so 加载基址 */
+static int _find_lib_cb(struct dl_phdr_info *info, size_t size, void *data) {
+    if (info->dlpi_name && strstr(info->dlpi_name, "libCoreLSKD.so")) {
+        *(uintptr_t *)data = info->dlpi_addr;
+        return 1;
+    }
+    return 0;
+}
+
+/* 返回 libCoreLSKD.so 的运行时加载基址 (失败返回 0) */
+static uintptr_t get_lib_core_lskd_base(void) {
+    uintptr_t base = 0;
+    dl_iterate_phdr(_find_lib_cb, &base);
+    return base;
+}
+
+/* 在 libCoreLSKD+0x1d5709 (R1 入口) 安装 Dobby hook (仅一次) */
+static void setup_r1_hook(void) {
+    if (g_r1_hooked) return;
+    uintptr_t base = get_lib_core_lskd_base();
+    if (!base) { fprintf(stderr, "[!] libCoreLSKD not loaded\n"); return; }
+    void *r1 = (void *)(base + 0x1d5709);
+    if (DobbyInstrument(r1, r1_capture_cb) == 0) {
+        g_r1_hooked = 1;
+        fprintf(stderr, "[+] R1 hook installed @ %p (base 0x%lx)\n", r1, base);
+    } else {
+        fprintf(stderr, "[!] R1 hook install failed @ %p\n", r1);
+    }
+}
+
+/*
+ * 捕获某 (adam, uri) 的 content 解密模板: ctx + 原始 state + R1 入口寄存器。
+ *
+ * 流程:
+ *   1. (可选 with_refresh) refresh_decrypt_ctx() 复刻真实解密会话 —— 会话是
+ *      安全网: 首次尝试不刷新 (实测大多成功), 失败后调用方带 refresh 重试。
+ *   2. getKdContext(adam, uri) 派生 kdContext (注意: 返回值是 void**, 需解引用)
+ *   3. 开启捕获窗口, 对 64B 全零 dummy 跑一次 NfcR 触发 R1 hook
+ *   4. 若捕获成功, 拷贝 ctx/state/寄存器到输出; 否则返回 -1
+ *
+ * 返回 0 成功, -1 失败 (getKdContext 失败 / hook 未装 / R1 未触发)。
+ */
+static int capture_content_template(const char *adam, const char *uri,
+                                    uint8_t *ctx_out, uint8_t *state_out,
+                                    uint64_t *rcx, uint64_t *rax, uint64_t *rdx,
+                                    uint64_t *r9, uint64_t *rbp, int with_refresh) {
+    /* 会话刷新是安全网: 首次尝试不刷新, 失败后带 refresh 重试 */
+    if (with_refresh) refresh_decrypt_ctx();
+    void **kd_ptr = getKdContext(adam, uri);
+    if (!kd_ptr || !*kd_ptr) { fprintf(stderr, "[!] getKdContext failed\n"); return -1; }
+    void *kd = *kd_ptr;
+    setup_r1_hook();
+    if (!g_r1_hooked) return -1;
+    g_cap_target = kd;
+    g_cap_armed = 1;
+    g_cap_done = 0;
+    uint8_t dummy[64] = {0};
+    NfcRKVnxuKZy04KWbdFu71Ou(kd, 5, dummy, dummy, 64);  /* 触发 R1 hook */
+    g_cap_armed = 0;
+    if (!g_cap_done) { fprintf(stderr, "[!] R1 capture not triggered\n"); return -1; }
+    memcpy(ctx_out, g_cap_ctx, 0x8000);
+    memcpy(state_out, g_cap_state, 0x2100);
+    *rcx = g_cap_rcx; *rax = g_cap_rax; *rdx = g_cap_rdx;
+    *r9 = g_cap_r9; *rbp = g_cap_rbp;
+    return 0;
+}
+
+/* 极简 base64 编码 (无第三方依赖, 用于 JSON 响应中编码 ctx/state 二进制) */
+static void b64encode(const uint8_t *in, size_t len, char *out) {
+    static const char *t = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    size_t i = 0, o = 0;
+    for (; i + 2 < len; i += 3) {
+        uint32_t v = (in[i] << 16) | (in[i+1] << 8) | in[i+2];
+        out[o++] = t[(v >> 18) & 63]; out[o++] = t[(v >> 12) & 63];
+        out[o++] = t[(v >> 6) & 63]; out[o++] = t[v & 63];
+    }
+    if (i + 1 == len) {
+        uint32_t v = in[i] << 16;
+        out[o++] = t[(v >> 18) & 63]; out[o++] = t[(v >> 12) & 63]; out[o++] = '='; out[o++] = '=';
+    } else if (i + 2 == len) {
+        uint32_t v = (in[i] << 16) | (in[i+1] << 8);
+        out[o++] = t[(v >> 18) & 63]; out[o++] = t[(v >> 12) & 63];
+        out[o++] = t[(v >> 6) & 63]; out[o++] = '=';
+    }
+    out[o] = 0;
+}
+
+/*
+ * 40020 key 服务 (HTTP GET): 解析 ?adamId=&uri= 参数。
+ * 返回 JSON: {adamId, keyUri, contentKey, ctx, state, rcx, rax, rdx, r9, rbp}
+ *   - contentKey: 该 (adam,uri) 的 contentKey (base64 字符串)
+ *   - ctx/state:  content 解密模板 (base64) — 供 Python 离线解密器
+ *   - rcx/rax/rdx/r9/rbp: R1 入口寄存器 (hex)
+ * 首次捕获不刷新会话, 失败后带 refresh 重试 (见 capture_content_template)。
+ */
+void handle_key_request(const int connfd) {
+    char buffer[4096];
+    ssize_t n = read(connfd, buffer, sizeof(buffer) - 1);
+    if (n <= 0) return;
+    buffer[n] = '\0';
+
+    if (strncmp(buffer, "GET", 3) != 0) {
+        key_json_error(connfd, "405", "method not allowed");
+        return;
+    }
+
+    char *adamId = NULL;
+    char *uri = NULL;
+    char *query = strchr(buffer, '?');
+    if (query) {
+        query++;
+        char *sp = strchr(query, ' ');
+        if (sp) *sp = '\0';
+        char *saveptr;
+        char *token = strtok_r(query, "&", &saveptr);
+        while (token) {
+            if (strncmp(token, "adamId=", 7) == 0) {
+                adamId = url_decode(token + 7);
+            } else if (strncmp(token, "uri=", 4) == 0) {
+                uri = url_decode(token + 4);
+            }
+            token = strtok_r(NULL, "&", &saveptr);
+        }
+    }
+
+    if (!adamId) {
+        key_json_error(connfd, "400", "missing adamId");
+        return;
+    }
+
+    /* Apple Music uses a single prefetch key URI for all tracks
+       (m3u8 #EXT-X-KEY). Default to it unless an explicit uri is given. */
+    if (!uri) {
+        uri = strdup("skd://itunes.apple.com/P000000000/s1/e1");
+        if (!uri) { free(adamId); key_json_error(connfd, "500", "oom"); return; }
+    }
+
+    fprintf(stderr, "[.] key request: adamId=%s uri=%s\n", adamId, uri);
+    char *contentKey = get_content_key(adamId, uri);
+    if (!contentKey) {
+        free(adamId); free(uri);
+        key_json_error(connfd, "500", "key retrieval failed");
+        return;
+    }
+
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddStringToObject(root, "adamId", adamId);
+    cJSON_AddStringToObject(root, "keyUri", uri);
+    cJSON_AddStringToObject(root, "contentKey", contentKey);
+    {
+        uint8_t cap_ctx[0x8000], cap_state[0x2100];
+        uint64_t rcx = 0, rax = 0, rdx = 0, r9 = 0, rbp = 0;
+        int cap_ok = capture_content_template(adamId, uri, cap_ctx, cap_state,
+                                              &rcx, &rax, &rdx, &r9, &rbp, 0);
+        if (cap_ok != 0) {
+            /* 首次失败: 带会话刷新重试 */
+            fprintf(stderr, "[.] capture without refresh failed, retry with refresh\n");
+            cap_ok = capture_content_template(adamId, uri, cap_ctx, cap_state,
+                                              &rcx, &rax, &rdx, &r9, &rbp, 1);
+        }
+        if (cap_ok == 0) {
+            char ctx_b64[0x8000 * 4 / 3 + 8];
+            char state_b64[0x2100 * 4 / 3 + 8];
+            char tmp[64];
+            b64encode(cap_ctx, 0x8000, ctx_b64);
+            b64encode(cap_state, 0x2100, state_b64);
+            cJSON_AddStringToObject(root, "ctx", ctx_b64);
+            cJSON_AddStringToObject(root, "state", state_b64);
+            snprintf(tmp, sizeof(tmp), "0x%llx", (unsigned long long)rcx);
+            cJSON_AddStringToObject(root, "rcx", tmp);
+            snprintf(tmp, sizeof(tmp), "0x%llx", (unsigned long long)rax);
+            cJSON_AddStringToObject(root, "rax", tmp);
+            snprintf(tmp, sizeof(tmp), "0x%llx", (unsigned long long)rdx);
+            cJSON_AddStringToObject(root, "rdx", tmp);
+            snprintf(tmp, sizeof(tmp), "0x%llx", (unsigned long long)r9);
+            cJSON_AddStringToObject(root, "r9", tmp);
+            snprintf(tmp, sizeof(tmp), "0x%llx", (unsigned long long)rbp);
+            cJSON_AddStringToObject(root, "rbp", tmp);
+            fprintf(stderr, "[.] key response +ctx template (adamId=%s)\n", adamId);
+        }
+    }
+    char *json_body = cJSON_PrintUnformatted(root);
+    cJSON_Delete(root);
+    if (!json_body) { free(contentKey); free(adamId); free(uri); return; }
+
+    char *http_response = malloc(1024);
+    if (!http_response) { free(json_body); free(contentKey); free(adamId); free(uri); return; }
+    snprintf(http_response, 1024, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: %zu\r\nConnection: close\r\n\r\n",
+             strlen(json_body));
+    fprintf(stderr, "[.] key response: adamId=%s contentKey len=%zu body=%zu\n", adamId, strlen(contentKey), strlen(json_body));
+    writefull(connfd, http_response, strlen(http_response));
+    writefull(connfd, json_body, strlen(json_body));
+
+    free(http_response); free(json_body); free(contentKey);
+    free(adamId); free(uri);
+}
+
+static inline void *new_socket_key(void *args) {
+    const int fd = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, IPPROTO_TCP);
+    if (fd == -1) { perror("socket"); return NULL; }
+    const int optval = 1;
+    setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &optval, sizeof(optval));
+
+    static struct sockaddr_in serv_addr = {.sin_family = AF_INET};
+    inet_pton(AF_INET, args_info.host_arg, &serv_addr.sin_addr);
+    serv_addr.sin_port = htons(args_info.key_port_arg);
+    if (bind(fd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) == -1) { perror("bind"); return NULL; }
+    if (listen(fd, 5) == -1) { perror("listen"); return NULL; }
+
+    fprintf(stderr, "[!] listening key request on %s:%d\n", args_info.host_arg, args_info.key_port_arg);
+    static struct sockaddr_in peer_addr;
+    static socklen_t peer_addr_size = sizeof(peer_addr);
+    while (1) {
+        const int connfd = accept4(fd, (struct sockaddr *)&peer_addr, &peer_addr_size, SOCK_CLOEXEC);
+        if (connfd == -1) {
+            if (errno == ENETDOWN || errno == EPROTO || errno == ENOPROTOOPT ||
+                errno == EHOSTDOWN || errno == ENONET || errno == EHOSTUNREACH ||
+                errno == EOPNOTSUPP || errno == ENETUNREACH)
+                continue;
+            perror("accept4");
+        }
+        extern uint8_t handle_key_request_cpp(int);
+        handle_key_request_cpp(connfd);
+        if (close(connfd) == -1) { perror("close"); }
     }
 }
 
@@ -880,7 +1284,7 @@ char* get_account_storefront_id(struct shared_ptr reqCtx) {
 
 void write_storefront_id(void) {
     FILE *fp = fopen(strcat_b(args_info.base_dir_arg, "/STOREFRONT_ID"), "w");
-    printf("[+] StoreFront ID: %s\n", g_storefront_id);
+    fprintf(stderr, "[+] StoreFront ID: %s\n", g_storefront_id);
     fprintf(fp, "%s", g_storefront_id);
     fclose(fp);
 }
@@ -935,7 +1339,10 @@ char *get_music_user_token(char *guid, char *authToken, struct shared_ptr reqCtx
     _ZN17storeservicescore10URLRequest3runEv(urlRequest);
     struct shared_ptr *err = _ZNK17storeservicescore10URLRequest5errorEv(urlRequest);
     if (err->obj != NULL) {
-        return "";
+        int code = _ZNK17storeservicescore19StoreErrorCondition9errorCodeEv(err->obj);
+        const char *what = _ZNK17storeservicescore19StoreErrorCondition4whatEv(err->obj);
+        fprintf(stderr, "[!] createMusicToken error: code=%d, message=%s\n", code, what ? what : "none");
+        return NULL;
     }
     struct shared_ptr *urlResp = _ZNK17storeservicescore10URLRequest8responseEv(urlRequest);
     struct shared_ptr *resp = _ZNK17storeservicescore11URLResponse18underlyingResponseEv(urlResp->obj);
@@ -946,6 +1353,14 @@ char *get_music_user_token(char *guid, char *authToken, struct shared_ptr reqCtx
     cJSON *json = cJSON_Parse(respBody);
     cJSON *token_obj = cJSON_GetObjectItemCaseSensitive(json, "music_token");
     char *token = cJSON_GetStringValue(token_obj);
+    if (token == NULL) {
+        const char *err_desc = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(json, "error_description"));
+        const char *err_code = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(json, "error"));
+        fprintf(stderr, "[!] createMusicToken failed: %s (%s)\n",
+                err_desc ? err_desc : "unknown error",
+                err_code ? err_code : "?");
+        return NULL;
+    }
     char *result = strdup(token);
     return result;
 }
@@ -971,7 +1386,10 @@ char* get_dev_token(struct shared_ptr reqCtx) {
     _ZN17storeservicescore10URLRequest3runEv(urlRequest);
     struct shared_ptr *err = _ZNK17storeservicescore10URLRequest5errorEv(urlRequest);
     if (err->obj != NULL) {
-        return "";
+        int code = _ZNK17storeservicescore19StoreErrorCondition9errorCodeEv(err->obj);
+        const char *what = _ZNK17storeservicescore19StoreErrorCondition4whatEv(err->obj);
+        fprintf(stderr, "[!] devToken error: code=%d, message=%s\n", code, what ? what : "none");
+        return NULL;
     }
     struct shared_ptr *urlResp = _ZNK17storeservicescore10URLRequest8responseEv(urlRequest);
     struct shared_ptr *resp = _ZNK17storeservicescore11URLResponse18underlyingResponseEv(urlResp->obj);
@@ -982,6 +1400,10 @@ char* get_dev_token(struct shared_ptr reqCtx) {
     cJSON *json = cJSON_Parse(respBody);
     cJSON *token_obj = cJSON_GetObjectItemCaseSensitive(json, "token");
     char *token = cJSON_GetStringValue(token_obj);
+    if (token == NULL) {
+        fprintf(stderr, "[!] devToken error: token field missing in response\n");
+        return NULL;
+    }
     char *result = strdup(token);
     return result;
 }
@@ -1003,11 +1425,11 @@ void write_music_token(void) {
         char token[256];
         FILE *fp = fopen(strcat_b(args_info.base_dir_arg, "/MUSIC_TOKEN"), "r");
         fgets(token, sizeof(token), fp);
-        printf("[+] Music-Token: %.14s...\n", token);
+        fprintf(stderr, "[+] Music-Token: %.14s...\n", token);
         return;
     }
     FILE *fp = fopen(strcat_b(args_info.base_dir_arg, "/MUSIC_TOKEN"), "w");
-    printf("[+] Music-Token: %.14s...\n", g_music_token);
+    fprintf(stderr, "[+] Music-Token: %.14s...\n", g_music_token);
     fprintf(fp, "%s", g_music_token);
     fclose(fp);
 }
@@ -1031,11 +1453,7 @@ int main(int argc, char *argv[]) {
     split_string_safe(args_info.device_info_arg, "/", device_infos, 9, &copy_that_needs_to_be_freed);
 
     #ifndef MyRelease
-    subhook_install(subhook_new(_ZN13mediaplatform26DebugLogEnabledForPriorityENS_11LogPriorityE, allDebug, SUBHOOK_64BIT_OFFSET));
-    curl_hook = subhook_new(curl_easy_setopt, curl_easy_setopt_hook, SUBHOOK_64BIT_OFFSET);
-    subhook_install(curl_hook);
-    subhook_install(subhook_new(__android_log_print, android_log_print_hook, SUBHOOK_64BIT_OFFSET));
-    subhook_install(subhook_new(__android_log_write, android_log_write_hook, SUBHOOK_64BIT_OFFSET));
+    install_hooks();
     #endif
 
     init();
@@ -1057,13 +1475,42 @@ int main(int argc, char *argv[]) {
 
     offlineFlag = offline_available();
     if (offlineFlag) {
-        printf("[+] This account supports offline channel\n");
+        fprintf(stderr, "[+] This account supports offline channel\n");
     }
 
     // Cache account info
     g_storefront_id = get_account_storefront_id(reqCtx);
+    if (g_storefront_id == NULL) {
+        fprintf(stderr, "[!] failed to get storefront ID\n");
+        return EXIT_FAILURE;
+    }
     g_dev_token = get_dev_token(reqCtx);
+    if (g_dev_token == NULL) {
+        fprintf(stderr, "[!] failed to get dev token\n");
+        return EXIT_FAILURE;
+    }
     g_music_token = get_music_user_token(get_guid(), g_dev_token, reqCtx);
+    if (g_music_token == NULL) {
+        // [qemu-wl] refresh failed (e.g. expired session); fall back to cached MUSIC_TOKEN
+        fprintf(stderr, "[!] failed to get music token (refresh); trying cached MUSIC_TOKEN\n");
+        FILE *tf = fopen(strcat_b(args_info.base_dir_arg, "/MUSIC_TOKEN"), "r");
+        if (tf != NULL) {
+            char tbuf[256];
+            size_t n = fread(tbuf, 1, sizeof(tbuf) - 1, tf);
+            fclose(tf);
+            tbuf[n] = '\0';
+            char *s = tbuf;
+            while (*s == ' ' || *s == '\n' || *s == '\r') s++;
+            if (*s != '\0') {
+                g_music_token = strdup(s);
+                fprintf(stderr, "[!] using cached MUSIC_TOKEN (%.14s...)\n", g_music_token);
+            }
+        }
+        if (g_music_token == NULL) {
+            fprintf(stderr, "[!] failed to get music token\n");
+            return EXIT_FAILURE;
+        }
+    }
     fprintf(stderr, "[+] account info cached successfully\n");
 
     write_storefront_id();
@@ -1076,6 +1523,10 @@ int main(int argc, char *argv[]) {
     pthread_t account_thread;
     pthread_create(&account_thread, NULL, &new_socket_account, NULL);
     pthread_detach(account_thread);
+
+    pthread_t key_thread;
+    pthread_create(&key_thread, NULL, &new_socket_key, NULL);
+    pthread_detach(key_thread);
 
     return new_socket();
 }
