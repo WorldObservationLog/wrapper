@@ -91,7 +91,7 @@ All responses use:
 | Endpoint | Method | Parameters |
 |----------|--------|------------|
 | `/m3u8` | GET | `adamId` |
-| `/key` | GET | `adamId`, optional `uri` |
+| `/key` | GET | `adamId`, `uri` (required; the prefetch `skd://itunes.apple.com/P000000000/s1/e1` is rejected unless `adamId=0`) |
 | `/lyrics` | GET | `adamId`, optional `language`, optional `syllable` (`1`=syllable-lyrics default, `0`=lyrics) |
 | `/webplayback` | GET | `adamId` |
 | `/license` | POST | JSON: `adamId`, `challenge`, `uri` |

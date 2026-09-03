@@ -257,7 +257,18 @@ static void handle_key(const httplib::Request& req, httplib::Response& res) {
         res.set_content(json_error(400, "missing adamId"), "application/json");
         return;
     }
-    if (uri.empty()) uri = "skd://itunes.apple.com/P000000000/s1/e1";
+    if (uri.empty()) {
+        res.set_content(json_error(400, "missing uri"), "application/json");
+        return;
+    }
+    /* The prefetch key URI (adamId=0) derives a shared context template, not a
+       playable song key.  Requesting it with a real adamId yields a key that
+       cannot decrypt the track, so reject that combination. */
+    static const char* kPrefetchUri = "skd://itunes.apple.com/P000000000/s1/e1";
+    if (adamId != "0" && uri == kPrefetchUri) {
+        res.set_content(json_error(400, "invalid uri for adamId"), "application/json");
+        return;
+    }
 
     uint8_t cap_ctx[0x8000], cap_state[0x2100];
     uint64_t rcx = 0, rax = 0, rdx = 0, r9 = 0, rbp = 0;
