@@ -75,6 +75,7 @@ struct AppleApi {
                                   const std::string& region,
                                   const std::string& language,
                                   bool syllable,
+                                  const std::string& script,
                                   const std::string& devToken,
                                   const std::string& musicToken);
     static std::string getWebPlayback(const std::string& adamId,

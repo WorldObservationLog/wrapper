@@ -305,6 +305,7 @@ static void handle_lyrics(const httplib::Request& req, httplib::Response& res) {
     auto adamId = req.get_param_value("adamId");
     auto language = req.get_param_value("language");
     auto syllable = req.get_param_value("syllable");
+    auto script = req.get_param_value("script");
     if (adamId.empty()) {
         res.set_content(json_error(400, "missing adamId"), "application/json");
         return;
@@ -327,7 +328,8 @@ static void handle_lyrics(const httplib::Request& req, httplib::Response& res) {
     }
 
     std::string lyrics = AppleApi::getLyrics(adamId, tokens.storefront_id, language,
-                                              use_syllable, tokens.dev_token, tokens.music_token);
+                                              use_syllable, script,
+                                              tokens.dev_token, tokens.music_token);
     if (lyrics.empty()) {
         res.set_content(json_error(404, "lyrics not found"), "application/json");
         return;

@@ -227,17 +227,24 @@ std::string AppleApi::getLyrics(const std::string& adamId,
                                   const std::string& region,
                                   const std::string& language,
                                   bool syllable,
+                                  const std::string& script,
                                   const std::string& devToken,
                                   const std::string& musicToken) {
     CurlEasy curl;
     if (!curl.ok) return "";
 
+    /* l[script] is passed through so callers can pick the transliteration
+       script ("ja-Latn", "ko-Latn", ...).  A *-Latn script value is what makes
+       Apple include the <transliteration> block at all (verified: without it
+       the syllable-lyrics response has no romanization); default en-Latn
+       keeps romanization working while still being overridable. */
     std::string url = strfmt(
         "https://amp-api.music.apple.com/v1/catalog/%s/songs/%s/%s"
-        "?l[lyrics]=%s&extend=ttmlLocalizations&l[script]=en-Latn",
+        "?l[lyrics]=%s&extend=ttmlLocalizations&l[script]=%s",
         region.c_str(), adamId.c_str(),
         syllable ? "syllable-lyrics" : "lyrics",
-        language.c_str());
+        language.c_str(),
+        script.empty() ? "en-Latn" : script.c_str());
 
     std::string resp;
     curl.setOptStr(CURLOPT_URL, url.c_str());
