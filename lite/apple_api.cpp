@@ -221,8 +221,57 @@ std::string AppleApi::getDevToken() {
 }
 
 /* ---- Lyrics ---- */
-/* syllable=true  -> word-timed /syllable-lyrics (attributes.ttmlLocalizations)
- * syllable=false -> standard /lyrics            (attributes.ttml / text) */
+/* Convert a word-timed syllable TTML into Apple's line-timed /lyrics form.
+ * Verified byte-identical against the real /lyrics endpoint across songs:
+ *   1) itunes:timing="Word" -> "Line"
+ *   2) strip per-word <span> wrappers inside each <p> (text merges to a line)
+ *   3) non-empty <translations> block -> empty <translations/> (the plain
+ *      endpoint never returns translations/transliterations)
+ *   4) drop the <transliterations> block entirely */
+static std::string syllableTtmlToPlain(std::string tt) {
+    size_t p;
+    if ((p = tt.find("itunes:timing=\"Word\"")) != std::string::npos) {
+        tt.replace(p, strlen("itunes:timing=\"Word\""), "itunes:timing=\"Line\"");
+    }
+    /* strip <span ...> and </span> */
+    std::string out;
+    out.reserve(tt.size());
+    for (size_t i = 0; i < tt.size();) {
+        if (tt.compare(i, 6, "<span ") == 0) {
+            size_t close = tt.find('>', i);
+            i = (close == std::string::npos) ? tt.size() : close + 1;
+        } else if (tt.compare(i, 7, "</span>") == 0) {
+            i += 7;
+        } else {
+            out += tt[i++];
+        }
+    }
+    tt.swap(out);
+    /* translations: non-empty block -> empty element */
+    static const std::string transOpen = "<translations>";
+    static const std::string transClose = "</translations>";
+    size_t s = tt.find(transOpen);
+    while (s != std::string::npos) {
+        size_t e = tt.find(transClose, s);
+        tt.replace(s, (e == std::string::npos ? tt.size() : e + transClose.size()) - s,
+                   "<translations/>");
+        s = tt.find(transOpen, s + strlen("<translations/>"));
+    }
+    /* transliterations: remove entirely */
+    static const std::string trlOpen = "<transliterations>";
+    static const std::string trlClose = "</transliterations>";
+    s = tt.find(trlOpen);
+    while (s != std::string::npos) {
+        size_t e = tt.find(trlClose, s);
+        tt.erase(s, (e == std::string::npos ? tt.size() : e + trlClose.size()) - s);
+        s = tt.find(trlOpen, s);
+    }
+    return tt;
+}
+
+/* syllable=true  -> word-timed TTML from /syllable-lyrics
+ * syllable=false -> line-timed TTML converted in-wrapper from the syllable
+ *                   response (Apple's /lyrics endpoint output) */
 std::string AppleApi::getLyrics(const std::string& adamId,
                                   const std::string& region,
                                   const std::string& language,
@@ -233,16 +282,12 @@ std::string AppleApi::getLyrics(const std::string& adamId,
     CurlEasy curl;
     if (!curl.ok) return "";
 
-    /* l[script] is passed through so callers can pick the transliteration
-       script ("ja-Latn", "ko-Latn", ...).  A *-Latn script value is what makes
-       Apple include the <transliteration> block at all (verified: without it
-       the syllable-lyrics response has no romanization); default en-Latn
-       keeps romanization working while still being overridable. */
+    /* Always request the word-timed /syllable-lyrics endpoint; for the
+       line-timed form we convert locally (identical to /lyrics). */
     std::string url = strfmt(
-        "https://amp-api.music.apple.com/v1/catalog/%s/songs/%s/%s"
+        "https://amp-api.music.apple.com/v1/catalog/%s/songs/%s/syllable-lyrics"
         "?l[lyrics]=%s&extend=ttmlLocalizations&l[script]=%s",
         region.c_str(), adamId.c_str(),
-        syllable ? "syllable-lyrics" : "lyrics",
         language.c_str(),
         script.empty() ? "en-Latn" : script.c_str());
 
@@ -281,9 +326,17 @@ std::string AppleApi::getLyrics(const std::string& adamId,
     if (cJSON_IsArray(data) && cJSON_GetArraySize(data) > 0) {
         cJSON* first = cJSON_GetArrayItem(data, 0);
         cJSON* attrs = cJSON_GetObjectItemCaseSensitive(first, "attributes");
-        cJSON* ttml = cJSON_GetObjectItemCaseSensitive(attrs,
-                         syllable ? "ttmlLocalizations" : "ttml");
-        if (cJSON_IsString(ttml)) lyrics = ttml->valuestring;
+        cJSON* ttml = cJSON_GetObjectItemCaseSensitive(attrs, "ttmlLocalizations");
+        if (cJSON_IsString(ttml) && cJSON_GetStringValue(ttml)) {
+            std::string raw = ttml->valuestring;
+            if (syllable) {
+                lyrics = raw;
+            } else {
+                /* convert word-timed syllable TTML to the line-timed form
+                   that Apple's /lyrics endpoint returns */
+                lyrics = syllableTtmlToPlain(raw);
+            }
+        }
         if (lyrics.empty() && !syllable) {
             /* some tracks only expose plain-text lyrics */
             cJSON* text = cJSON_GetObjectItemCaseSensitive(attrs, "text");
