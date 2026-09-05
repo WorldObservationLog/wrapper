@@ -227,7 +227,26 @@ std::string AppleApi::getDevToken() {
  *      the <text> entries inside <translations> and <transliterations>), so
  *      translations/transliterations stay available in the line-timed output
  *      as whole-sentence text keyed by the same itunes:key (L1..) as the
- *      main lyrics. */
+ *      main lyrics.
+ *   3) collapse runs of 2+ spaces to a single space inside <p> and <text>
+ *      content (Apple's romanization spans keep double spaces between words;
+ *      the main lyrics text is unchanged). */
+static std::string collapseSpaces(const std::string& s) {
+    std::string out;
+    out.reserve(s.size());
+    bool prevSpace = false;
+    for (char c : s) {
+        if (c == ' ') {
+            if (!prevSpace) out += c;
+            prevSpace = true;
+        } else {
+            out += c;
+            prevSpace = false;
+        }
+    }
+    return out;
+}
+
 static std::string syllableTtmlToPlain(std::string tt) {
     size_t p;
     if ((p = tt.find("itunes:timing=\"Word\"")) != std::string::npos) {
@@ -246,7 +265,19 @@ static std::string syllableTtmlToPlain(std::string tt) {
             out += tt[i++];
         }
     }
-    return out;
+    tt.swap(out);
+    /* normalize spaces inside tag content (<p>, <text>, <span> remnants gone) */
+    size_t pos = 0;
+    while (pos < tt.size()) {
+        size_t open = tt.find('<', pos);
+        if (open == std::string::npos) { tt.replace(pos, std::string::npos, collapseSpaces(tt.substr(pos))); break; }
+        size_t close = tt.find('>', open);
+        if (close == std::string::npos) break;
+        /* text between previous '>' and this '<' */
+        if (open > pos) tt.replace(pos, open - pos, collapseSpaces(tt.substr(pos, open - pos)));
+        pos = close + 1;
+    }
+    return tt;
 }
 
 /* syllable=true  -> word-timed TTML from /syllable-lyrics
