@@ -221,13 +221,13 @@ std::string AppleApi::getDevToken() {
 }
 
 /* ---- Lyrics ---- */
-/* Convert a word-timed syllable TTML into Apple's line-timed /lyrics form.
- * Verified byte-identical against the real /lyrics endpoint across songs:
+/* Convert word-timed syllable TTML into line-timed form:
  *   1) itunes:timing="Word" -> "Line"
- *   2) strip per-word <span> wrappers inside each <p> (text merges to a line)
- *   3) non-empty <translations> block -> empty <translations/> (the plain
- *      endpoint never returns translations/transliterations)
- *   4) drop the <transliterations> block entirely */
+ *   2) strip per-word <span> wrappers everywhere (main <p> lines as well as
+ *      the <text> entries inside <translations> and <transliterations>), so
+ *      translations/transliterations stay available in the line-timed output
+ *      as whole-sentence text keyed by the same itunes:key (L1..) as the
+ *      main lyrics. */
 static std::string syllableTtmlToPlain(std::string tt) {
     size_t p;
     if ((p = tt.find("itunes:timing=\"Word\"")) != std::string::npos) {
@@ -246,27 +246,7 @@ static std::string syllableTtmlToPlain(std::string tt) {
             out += tt[i++];
         }
     }
-    tt.swap(out);
-    /* translations: non-empty block -> empty element */
-    static const std::string transOpen = "<translations>";
-    static const std::string transClose = "</translations>";
-    size_t s = tt.find(transOpen);
-    while (s != std::string::npos) {
-        size_t e = tt.find(transClose, s);
-        tt.replace(s, (e == std::string::npos ? tt.size() : e + transClose.size()) - s,
-                   "<translations/>");
-        s = tt.find(transOpen, s + strlen("<translations/>"));
-    }
-    /* transliterations: remove entirely */
-    static const std::string trlOpen = "<transliterations>";
-    static const std::string trlClose = "</transliterations>";
-    s = tt.find(trlOpen);
-    while (s != std::string::npos) {
-        size_t e = tt.find(trlClose, s);
-        tt.erase(s, (e == std::string::npos ? tt.size() : e + trlClose.size()) - s);
-        s = tt.find(trlOpen, s);
-    }
-    return tt;
+    return out;
 }
 
 /* syllable=true  -> word-timed TTML from /syllable-lyrics
