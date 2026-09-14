@@ -86,6 +86,7 @@ struct AppleApi {
                             const std::string& uri,
                             const std::string& devToken,
                             const std::string& musicToken,
+                            const std::string& drmType,
                             std::string& outLicense,
                             int& outRenew);
 };

@@ -377,13 +377,21 @@ static void handle_license(const httplib::Request& req, httplib::Response& res) 
     const char* adamId_s = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(req_json, "adamId"));
     const char* challenge_s = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(req_json, "challenge"));
     const char* uri_s = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(req_json, "uri"));
+    const char* drmType_s = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(req_json, "drm-type"));
     std::string adamId = adamId_s ? adamId_s : "";
     std::string challenge = challenge_s ? challenge_s : "";
     std::string uri = uri_s ? uri_s : "";
+    std::string drmType = drmType_s ? drmType_s : "";
     cJSON_Delete(req_json);
 
     if (adamId.empty() || challenge.empty() || uri.empty()) {
         res.set_content(json_error(400, "missing adamId, challenge, or uri"), "application/json");
+        return;
+    }
+
+    if (drmType.empty()) drmType = "wv";
+    if (drmType != "wv" && drmType != "pr") {
+        res.set_content(json_error(400, "drm-type must be wv or pr"), "application/json");
         return;
     }
 
@@ -395,7 +403,7 @@ static void handle_license(const httplib::Request& req, httplib::Response& res) 
 
     std::string license;
     int renew = 0;
-    if (!AppleApi::getLicense(adamId, challenge, uri, tokens.dev_token, tokens.music_token, license, renew)) {
+    if (!AppleApi::getLicense(adamId, challenge, uri, tokens.dev_token, tokens.music_token, drmType, license, renew)) {
         res.set_content(json_error(500, "license acquisition failed"), "application/json");
         return;
     }
