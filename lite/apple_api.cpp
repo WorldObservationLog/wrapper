@@ -452,6 +452,7 @@ bool AppleApi::getLicense(const std::string& adamId,
                            const std::string& uri,
                            const std::string& devToken,
                            const std::string& musicToken,
+                           const std::string& drmType,
                            std::string& outLicense,
                            int& outRenew) {
     CurlEasy curl;
@@ -460,7 +461,9 @@ bool AppleApi::getLicense(const std::string& adamId,
     cJSON* req = cJSON_CreateObject();
     cJSON_AddStringToObject(req, "challenge", challenge.c_str());
     cJSON_AddStringToObject(req, "uri", uri.c_str());
-    cJSON_AddStringToObject(req, "key-system", "com.widevine.alpha");
+    /* Only two DRM systems are supported: wv (default) and pr. */
+    const char* keySystem = (drmType == "pr") ? "com.microsoft.playready" : "com.widevine.alpha";
+    cJSON_AddStringToObject(req, "key-system", keySystem);
     cJSON_AddStringToObject(req, "adamId", adamId.c_str());
     cJSON_AddBoolToObject(req, "isLibrary", 0);
     cJSON_AddBoolToObject(req, "user-initiated", 1);
