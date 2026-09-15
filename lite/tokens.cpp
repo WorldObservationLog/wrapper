@@ -267,15 +267,23 @@ bool refresh_tokens(std::string& out_storefront, std::string& out_dev_token, std
 }
 
 bool cache_login_tokens() {
+    /* Login already succeeded, so a token fetch failure is most likely
+       transient; retry a few times before treating the login as failed. */
+    static const int kAttempts = 5;
     std::string sf, dev, music;
-    if (!refresh_tokens(sf, dev, music)) {
-        return false;
+    for (int attempt = 1; attempt <= kAttempts; ++attempt) {
+        if (refresh_tokens(sf, dev, music)) {
+            g_tokens.storefront_id = sf;
+            g_tokens.dev_token = dev;
+            g_tokens.music_token = music;
+            LOG_INFO("account info cached successfully");
+            return true;
+        }
+        LOG_WARN("token fetch failed after login (attempt %d/%d)", attempt, kAttempts);
+        if (attempt < kAttempts) sleep(2);
     }
-    g_tokens.storefront_id = sf;
-    g_tokens.dev_token = dev;
-    g_tokens.music_token = music;
-    LOG_INFO("account info cached successfully");
-    return true;
+    LOG_ERROR("failed to cache account info after %d attempts", kAttempts);
+    return false;
 }
 
 std::string fetch_dev_token() {
