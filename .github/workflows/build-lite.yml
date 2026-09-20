@@ -309,6 +309,14 @@ jobs:
           name: wrapper-lite-qemu-linux-x86_64
           path: pkg
 
+      # Uploading/downloading an artifact drops the executable bit, so the
+      # binaries arrive as regular files and cannot be run as-is.
+      - name: Restore executable bits
+        run: |
+          set -euo pipefail
+          chmod +x pkg/wrapper-lite-qemu
+          chmod +x pkg/qemu/bin/qemu-system-x86_64
+
       - name: Fail if the package ships its build machine's glibc
         run: |
           set -euo pipefail
