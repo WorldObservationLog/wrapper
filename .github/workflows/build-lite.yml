@@ -219,13 +219,31 @@ jobs:
             cp -R /usr/share/qemu/. dist/qemu/bin/ 2>/dev/null || true
             cp -R /usr/share/seabios/. dist/qemu/bin/ 2>/dev/null || true
             cp -R /usr/lib/ipxe/qemu/. dist/qemu/bin/ 2>/dev/null || true
-            # bundle the dynamically-linked shared libraries the QEMU binary
-            # needs (the launcher adds dist/qemu/bin to LD_LIBRARY_PATH)
+            # Bundle the shared libraries the QEMU binary needs into
+            # dist/qemu/lib. glibc itself is deliberately NOT bundled: the
+            # dynamic loader (ld-linux-x86-64.so.2) always comes from the host
+            # and cannot be replaced through LD_LIBRARY_PATH, so shipping this
+            # runner's libc.so.6/libm.so.6 next to QEMU makes it segfault
+            # before main() on every host whose glibc differs from the
+            # runner's - i.e. on every distro except the one used here.
+            mkdir -p dist/qemu/lib
             ldd "$(command -v qemu-system-x86_64)" 2>/dev/null | \
               awk '/=> \// {print $3}' | sort -u | \
               while read -r so; do
-                [ -f "$so" ] && cp -n "$so" dist/qemu/bin/ 2>/dev/null || true
+                [ -f "$so" ] || continue
+                case "${so##*/}" in
+                  libc.so.6|libm.so.6|ld-linux*|libdl.so*|libpthread.so*|librt.so*|libresolv.so*|libnss_*|libutil.so*|libanl.so*|libBrokenLocale.so*|libthread_db.so*)
+                    echo "  not bundling glibc component: ${so##*/}" ;;
+                  *)
+                    cp -n "$so" dist/qemu/lib/ 2>/dev/null || true ;;
+                esac
               done
+            # Hard guarantee that no glibc slipped into the package next to the
+            # QEMU binary; without this the build only works on this runner.
+            if ls dist/qemu/bin/libc.so.6 dist/qemu/bin/libm.so.6 >/dev/null 2>&1; then
+              echo "::error::glibc was copied into dist/qemu/bin; the package would crash on other distros"
+              exit 1
+            fi
             # bundle QEMU accel/device modules (QEMU_MODULE_DIR points here).
             # Resolve the module dir by locating an accel .so in the installed
             # tree; the dir name differs between x86_64/aarch64 runners and
@@ -268,3 +286,68 @@ jobs:
         with:
           name: wrapper-lite-qemu-${{ matrix.artifact_suffix }}
           path: dist
+
+  # Runs the packaged launcher on a glibc that is *different* from the build
+  # runner's. The package is assembled on ubuntu-22.04 (oldest supported
+  # runner, for the widest compatibility) and must still work on newer
+  # releases; before this job existed, a regression like shipping the build
+  # machine's glibc could only be noticed by users.
+  verify-qemu-package:
+    name: Verify wrapper-lite-qemu (${{ matrix.os }})
+    needs: build-wrapper-lite-qemu
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+          - os: ubuntu-22.04
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Download the packaged launcher
+        uses: actions/download-artifact@v8
+        with:
+          name: wrapper-lite-qemu-linux-x86_64
+          path: pkg
+
+      - name: Fail if the package ships its build machine's glibc
+        run: |
+          set -euo pipefail
+          for bad in libc.so.6 libm.so.6 ld-linux-x86-64.so.2; do
+            if [ -e "pkg/qemu/bin/$bad" ]; then
+              echo "::error::pkg/qemu/bin/$bad comes from the build runner; QEMU would crash on any host with a different glibc"
+              exit 1
+            fi
+          done
+          ls -l pkg/wrapper-lite-qemu pkg/qemu/bin/qemu-system-x86_64
+
+      - name: The QEMU binary must load with this host's loader
+        run: |
+          set -euo pipefail
+          # Deliberately no LD_LIBRARY_PATH: this is exactly what breaks when
+          # the package carries its own glibc.
+          pkg/qemu/bin/qemu-system-x86_64 --version
+
+      - name: Boot the guest through the launcher and query /status
+        run: |
+          set -euo pipefail
+          chmod +x pkg/wrapper-lite-qemu
+          ( cd pkg && ./wrapper-lite-qemu --accel tcg --host-port 12340 > qemu.log 2>&1 & )
+          ok=""
+          for _ in $(seq 1 150); do
+            if curl -fsS --max-time 3 http://127.0.0.1:12340/status > status.json 2>/dev/null; then
+              ok=1; break
+            fi
+            sleep 2
+          done
+          echo "--- launcher log ---"
+          tail -n 30 pkg/qemu.log || true
+          echo "--- /status ---"
+          cat status.json 2>/dev/null || true
+          [ -n "$ok" ] || { echo "::error::the service never answered on 127.0.0.1:12340"; exit 1; }
+          grep -q '"code":0' status.json
+          # the launcher must have started the QEMU that ships with the package
+          grep -q 'qemu=.*qemu/bin/qemu-system-x86_64' pkg/qemu.log
+
+      - name: Stop the guest
+        if: always()
+        run: pkill -f wrapper-lite-qemu || true
