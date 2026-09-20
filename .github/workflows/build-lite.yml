@@ -331,8 +331,11 @@ jobs:
       - name: The QEMU binary must load with this host's loader
         run: |
           set -euo pipefail
-          # Deliberately no LD_LIBRARY_PATH: this is exactly what breaks when
-          # the package carries its own glibc.
+          # The bundled support libraries live in qemu/lib (qemu/bin on
+          # platforms that keep them next to the binary). The ELF interpreter
+          # and libc still come from the host, which is what this step checks;
+          # neither directory carries a glibc (verified in the previous step).
+          export LD_LIBRARY_PATH="$PWD/pkg/qemu/lib:$PWD/pkg/qemu/bin"
           pkg/qemu/bin/qemu-system-x86_64 --version
 
       - name: Boot the guest through the launcher and query /status
