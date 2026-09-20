@@ -98,9 +98,40 @@ static bool findOnPath(const std::string& name, std::string& out) {
     return false;
 }
 
+static bool hasBundledGlibc(const std::string& dir) {
+    return fileExists(dir + "/libc.so.6") || fileExists(dir + "/libm.so.6");
+}
+
+#ifndef _WIN32
+static bool sameFile(const std::string& a, const std::string& b) {
+    char ra[PATH_MAX];
+    char rb[PATH_MAX];
+    if (!realpath(a.c_str(), ra) || !realpath(b.c_str(), rb)) return false;
+    return std::strcmp(ra, rb) == 0;
+}
+#endif
+
+static bool isBundledQemu(const std::string& qemuBin, const std::string& dir) {
+    if (qemuBin.empty() || dir.empty()) return false;
+    std::string bundled = dir + "/bin/" + qemuName();
+#ifdef _WIN32
+    return qemuBin == bundled;
+#else
+    return sameFile(qemuBin, bundled);
+#endif
+}
+
+static bool bundledQemuUsable(const std::string& dir) {
+    if (dir.empty()) return false;
+    if (!fileExists(dir + "/bin/" + qemuName())) return false;
+    if (hasBundledGlibc(dir + "/bin") && !fileExists(dir + "/lib")) return false;
+    return true;
+}
+
 static std::string locateQemu(const std::string& dir) {
     if (!g_qemuBin.empty()) return g_qemuBin;
     std::string q = qemuName();
+    if (bundledQemuUsable(dir)) return dir + "/bin/" + q;
     std::string out;
     if (findOnPath(q, out)) return out;
     if (!dir.empty()) {
@@ -219,24 +250,42 @@ static std::vector<std::string> buildQemuArgs(const std::string& qemuBin,
                                               const std::string& argsFile) {
     std::vector<std::string> args;
     args.push_back(qemuBin);
-    /* Point QEMU at the bundled firmware (SeaBIOS bios-256k.bin, vgabios,
+    const bool bundled = isBundledQemu(qemuBin, dir);
+    /* Point the bundled QEMU at the firmware (SeaBIOS bios-256k.bin, vgabios,
        option ROMs, ...) shipped in qemu/bin for every platform, including
-       Android (bundled from the Termux qemu packages). */
-    args.push_back("-L");
-    args.push_back(dir + "/bin");
+       Android (bundled from the Termux qemu packages). A system QEMU keeps
+       using its own firmware tree. */
+    if (bundled) {
+        args.push_back("-L");
+        args.push_back(dir + "/bin");
+    }
 #ifndef _WIN32
-    /* The bundled QEMU may be dynamically linked against the shared
-       libraries we ship next to it in qemu/bin; make the loader find them
-       without requiring a system install. */
-    std::string libPath = dir + "/bin";
-    const char* existing = std::getenv("LD_LIBRARY_PATH");
-    if (existing && *existing) libPath = libPath + ":" + existing;
-    setenv("LD_LIBRARY_PATH", libPath.c_str(), 1);
-    /* QEMU accel/device modules (accel-tcg-*.so, ...) are looked up via the
-       QEMU_MODULE_DIR env var; point it at the bundled modules when present. */
-    if (fileExists(dir + "/bin/accel-tcg-x86_64.so") ||
-        fileExists(dir + "/bin/accel-tcg-i386.so")) {
-        setenv("QEMU_MODULE_DIR", (dir + "/bin").c_str(), 1);
+    /* Only the bundled QEMU needs help finding its libraries; a system QEMU
+       must keep the environment it was built for. */
+    if (bundled) {
+        /* Library directories we ship: qemu/lib holds the support libraries,
+           qemu/bin holds them too on Android (Termux packages) where there is
+           no glibc to worry about. A directory carrying a build-machine glibc
+           is skipped, so the host's loader and libc stay a matched pair. */
+        std::string libPath;
+        const char* candidates[] = { "/lib", "/bin" };
+        for (size_t i = 0; i < sizeof(candidates) / sizeof(candidates[0]); ++i) {
+            std::string d = dir + candidates[i];
+            if (!fileExists(d) || hasBundledGlibc(d)) continue;
+            if (!libPath.empty()) libPath += ":";
+            libPath += d;
+        }
+        if (!libPath.empty()) {
+            const char* existing = std::getenv("LD_LIBRARY_PATH");
+            if (existing && *existing) libPath = libPath + ":" + existing;
+            setenv("LD_LIBRARY_PATH", libPath.c_str(), 1);
+        }
+        /* QEMU accel/device modules (accel-tcg-*.so, ...) are looked up via
+           the QEMU_MODULE_DIR env var; point it at the bundled modules. */
+        if (fileExists(dir + "/bin/accel-tcg-x86_64.so") ||
+            fileExists(dir + "/bin/accel-tcg-i386.so")) {
+            setenv("QEMU_MODULE_DIR", (dir + "/bin").c_str(), 1);
+        }
     }
 #endif
     args.push_back("-accel");
@@ -337,6 +386,25 @@ int main(int argc, char** argv) {
 
     std::string qemuBin = locateQemu(assetDir);
 
+    /* Never start a bundle that would die inside the dynamic loader: say why
+       and what to do instead of printing loader errors. */
+    if (isBundledQemu(qemuBin, assetDir) && !bundledQemuUsable(assetDir)) {
+        std::fprintf(stderr,
+            "[run] refusing to start the bundled QEMU (%s):\n"
+            "      it ships the build machine's glibc (libc.so.6/libm.so.6 in qemu/bin) and this\n"
+            "      host has a different one, so QEMU would crash before starting.\n"
+            "      Fix any of these ways:\n"
+            "        * use a package whose support libraries live in qemu/lib (current builds)\n"
+            "        * or move them yourself:\n"
+            "            mkdir -p %s/lib %s/lib-glibc-bak\n"
+            "            mv %s/bin/lib*.so* %s/lib/\n"
+            "            mv %s/lib/libc.so.6 %s/lib/libm.so.6 %s/lib-glibc-bak/ 2>/dev/null\n"
+            "        * or run a system QEMU instead:  --qemu-bin /usr/bin/qemu-system-x86_64\n",
+            qemuBin.c_str(), assetDir.c_str(), assetDir.c_str(), assetDir.c_str(),
+            assetDir.c_str(), assetDir.c_str(), assetDir.c_str(), assetDir.c_str());
+        return 1;
+    }
+
     std::string argsFile = assetDir + "/.lite-qemu-args";
     /* The guest lite must listen on 0.0.0.0 (or --guest-host) for QEMU's
        user-mode hostfwd to reach it; append the launcher-managed settings so
@@ -357,7 +425,11 @@ int main(int argc, char** argv) {
     if (!liteArgs.empty()) std::fprintf(stderr, "[run] forwarding %zu argument(s) to wrapper-lite\n", liteArgs.size());
 
     int rc = runQemu(qemuBin, accel, assetDir, argsFile);
-    if (rc != 0 && !forced && accel != "tcg") {
+    /* 127 = the loader could not start QEMU at all, 139 = QEMU crashed while
+       starting up. Neither has anything to do with acceleration, so retrying
+       on TCG would only repeat the same failure and double the log noise. */
+    const bool startupFailure = (rc == 127 || rc == 139);
+    if (rc != 0 && !forced && accel != "tcg" && !startupFailure) {
         std::fprintf(stderr, "[run] %s acceleration unavailable, falling back to tcg\n", accel.c_str());
         rc = runQemu(qemuBin, "tcg", assetDir, argsFile);
     }

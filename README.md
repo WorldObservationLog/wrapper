@@ -64,8 +64,20 @@ c++ -std=c++11 -O2 -o wrapper-lite-qemu wrapper-lite-qemu.cpp
 The launcher locates the QEMU binary in this order:
 
 1. `--qemu-bin <path>` / `QEMU_BIN`
-2. `PATH`
-3. `qemu/bin/` (bundled)
+2. `qemu/bin/` (bundled)
+3. `PATH`
+
+The bundled QEMU is preferred so that the firmware (`-L qemu/bin`), the QEMU
+modules (`QEMU_MODULE_DIR`) and the support libraries (`qemu/lib`) always come
+from the same package. `-L`, `LD_LIBRARY_PATH` and `QEMU_MODULE_DIR` are only
+adjusted for the bundled QEMU; a system QEMU keeps its own libraries, modules
+and firmware.
+
+A package never ships glibc (`libc.so.6`, `libm.so.6`): the ELF interpreter is
+always the host's and cannot be replaced through `LD_LIBRARY_PATH`, so the
+loader and libc must stay a matched pair from the host. Only non-glibc support
+libraries are bundled, in `qemu/lib/` (`qemu/bin/` on Android, where the Termux
+packages place them next to the binary).
 
 See [QEMU launcher arguments](#qemu-launcher-arguments) for the full option
 list.
