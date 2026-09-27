@@ -283,6 +283,9 @@ static void pbErrCb(void *)
     // Returns immediately.  recovery_worker handles context refresh.
 }
 
-extern "C" std::function<void (int const&)> endLeaseCallback(endLeaseCb);
-extern "C" std::function<void (void *)>     pbErrCallback(pbErrCb);
+// endLeaseCallback and pbErrCallback are Bionic-compatible std::function objects
+// defined in hybris_stubs.c as 32-byte zero-initialized buffers (empty functions).
+// Proper Bionic vtable-wrapped callbacks are set up by hybris_init_callbacks().
+extern "C" void endLeaseCbExport(const int *code_ptr) { endLeaseCb(*code_ptr); }
+extern "C" void pbErrCbExport(void *arg) { pbErrCb(arg); }
 

@@ -41,6 +41,7 @@ const char *gengetopt_args_info_help[] = {
   "  -M, --m3u8-port=INT         (default=`20020')",
   "  -A, --account-port=INT      (default=`30020')",
   "  -K, --key-port=INT          (default=`40020')",
+  "  -G, --mv-port=INT           (default=`50020')",
   "  -P, --proxy=STRING          (default=`')",
   "  -L, --login=STRING        username:password",
   "  -F, --code-from-file        (default=off)",
@@ -78,6 +79,7 @@ void clear_given (struct gengetopt_args_info *args_info)
   args_info->m3u8_port_given = 0 ;
   args_info->account_port_given = 0 ;
   args_info->key_port_given = 0 ;
+  args_info->mv_port_given = 0 ;
   args_info->proxy_given = 0 ;
   args_info->login_given = 0 ;
   args_info->code_from_file_given = 0 ;
@@ -99,6 +101,8 @@ void clear_args (struct gengetopt_args_info *args_info)
   args_info->account_port_orig = NULL;
   args_info->key_port_arg = 40020;
   args_info->key_port_orig = NULL;
+  args_info->mv_port_arg = 50020;
+  args_info->mv_port_orig = NULL;
   args_info->proxy_arg = gengetopt_strdup ("");
   args_info->proxy_orig = NULL;
   args_info->login_arg = NULL;
@@ -123,11 +127,12 @@ void init_args_info(struct gengetopt_args_info *args_info)
   args_info->m3u8_port_help = gengetopt_args_info_help[4] ;
   args_info->account_port_help = gengetopt_args_info_help[5] ;
   args_info->key_port_help = gengetopt_args_info_help[6] ;
-  args_info->proxy_help = gengetopt_args_info_help[7] ;
-  args_info->login_help = gengetopt_args_info_help[8] ;
-  args_info->code_from_file_help = gengetopt_args_info_help[9] ;
-  args_info->base_dir_help = gengetopt_args_info_help[10] ;
-  args_info->device_info_help = gengetopt_args_info_help[11] ;
+  args_info->mv_port_help = gengetopt_args_info_help[7] ;
+  args_info->proxy_help = gengetopt_args_info_help[8] ;
+  args_info->login_help = gengetopt_args_info_help[9] ;
+  args_info->code_from_file_help = gengetopt_args_info_help[10] ;
+  args_info->base_dir_help = gengetopt_args_info_help[11] ;
+  args_info->device_info_help = gengetopt_args_info_help[12] ;
   
 }
 
@@ -223,6 +228,7 @@ cmdline_parser_release (struct gengetopt_args_info *args_info)
   free_string_field (&(args_info->m3u8_port_orig));
   free_string_field (&(args_info->account_port_orig));
   free_string_field (&(args_info->key_port_orig));
+  free_string_field (&(args_info->mv_port_orig));
   free_string_field (&(args_info->proxy_arg));
   free_string_field (&(args_info->proxy_orig));
   free_string_field (&(args_info->login_arg));
@@ -275,6 +281,8 @@ cmdline_parser_dump(FILE *outfile, struct gengetopt_args_info *args_info)
     write_into_file(outfile, "account-port", args_info->account_port_orig, 0);
   if (args_info->key_port_given)
     write_into_file(outfile, "key-port", args_info->key_port_orig, 0);
+  if (args_info->mv_port_given)
+    write_into_file(outfile, "mv-port", args_info->mv_port_orig, 0);
   if (args_info->proxy_given)
     write_into_file(outfile, "proxy", args_info->proxy_orig, 0);
   if (args_info->login_given)
@@ -552,6 +560,7 @@ cmdline_parser_internal (
         { "m3u8-port",	1, NULL, 'M' },
         { "account-port",	1, NULL, 'A' },
         { "key-port",	1, NULL, 'K' },
+        { "mv-port",	1, NULL, 'G' },
         { "proxy",	1, NULL, 'P' },
         { "login",	1, NULL, 'L' },
         { "code-from-file",	0, NULL, 'F' },
@@ -560,7 +569,7 @@ cmdline_parser_internal (
         { 0,  0, 0, 0 }
       };
 
-      c = getopt_long (argc, argv, "hVH:D:M:A:K:P:L:FB:I:", long_options, &option_index);
+      c = getopt_long (argc, argv, "hVH:D:M:A:K:G:P:L:FB:I:", long_options, &option_index);
 
       if (c == -1) break;	/* Exit from `while (1)' loop.  */
 
@@ -636,10 +645,22 @@ cmdline_parser_internal (
             goto failure;
         
           break;
+        case 'G':	/* .  */
+
+
+          if (update_arg( (void *)&(args_info->mv_port_arg),
+               &(args_info->mv_port_orig), &(args_info->mv_port_given),
+              &(local_args_info.mv_port_given), optarg, 0, "50020", ARG_INT,
+              check_ambiguity, override, 0, 0,
+              "mv-port", 'G',
+              additional_error))
+            goto failure;
+
+          break;
         case 'P':	/* .  */
-        
-        
-          if (update_arg( (void *)&(args_info->proxy_arg), 
+
+
+          if (update_arg( (void *)&(args_info->proxy_arg),
                &(args_info->proxy_orig), &(args_info->proxy_given),
               &(local_args_info.proxy_given), optarg, 0, "", ARG_STRING,
               check_ambiguity, override, 0, 0,
