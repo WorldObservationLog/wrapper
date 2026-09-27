@@ -22,11 +22,22 @@ extern const char *android_dlerror(void);
 static void *h_ssc = NULL;  /* libstoreservicescore.so */
 static void *h_apm = NULL;  /* libandroidappmusic.so   */
 
-/* ── vtable data globals ─────────────────────────────────────────────────── */
-void *_ZTVNSt6__ndk120__shared_ptr_emplaceIN17storeservicescore22ProtocolDialogResponseENS_9allocatorIS2_EEEE = NULL;
-void *_ZTVNSt6__ndk120__shared_ptr_emplaceIN17storeservicescore19CredentialsResponseENS_9allocatorIS2_EEEE = NULL;
-void *_ZTVNSt6__ndk120__shared_ptr_emplaceIN17storeservicescore20RequestContextConfigENS_9allocatorIS2_EEEE = NULL;
-void *_ZTVNSt6__ndk120__shared_ptr_emplaceIN13mediaplatform11HTTPMessageENS_9allocatorIS2_EEEE = NULL;
+/* ── vtable data arrays ──────────────────────────────────────────────────────
+ * import.h declares these as "extern void *_ZTV...;" (single pointer).
+ * main.c uses them as "&_ZTV... + 2" — taking the address of the symbol and
+ * offsetting by 2 void* widths to reach vtable slot [2] (first virtual func).
+ *
+ * In the normal Android dlopen build the linker resolves the extern reference
+ * so that &_ZTV... == the vtable address in the .so.  In the hybris build we
+ * cannot alias Android memory, so we define each symbol as an 8-element array
+ * and memcpy the vtable content from Android memory into it.  Then:
+ *   &_ZTV... (from main.c's extern void* view) == &array[0]
+ *   &_ZTV... + 2 == &array[2] == vtable slot [2]  ✓
+ * ──────────────────────────────────────────────────────────────────────────── */
+void *_ZTVNSt6__ndk120__shared_ptr_emplaceIN17storeservicescore22ProtocolDialogResponseENS_9allocatorIS2_EEEE[8];
+void *_ZTVNSt6__ndk120__shared_ptr_emplaceIN17storeservicescore19CredentialsResponseENS_9allocatorIS2_EEEE[8];
+void *_ZTVNSt6__ndk120__shared_ptr_emplaceIN17storeservicescore20RequestContextConfigENS_9allocatorIS2_EEEE[8];
+void *_ZTVNSt6__ndk120__shared_ptr_emplaceIN13mediaplatform11HTTPMessageENS_9allocatorIS2_EEEE[8];
 
 /* ── symbol resolver ─────────────────────────────────────────────────────── */
 static void *sym(const char *name) {
@@ -55,31 +66,22 @@ void hybris_init_libs(const char *lib64) {
     h_apm = android_dlopen(path, RTLD_NOW_GLOBAL);
     if (!h_apm) { fprintf(stderr, "[hybris] cannot load libandroidappmusic.so: %s\n", android_dlerror()); exit(1); }
 
-    /* patch vtable pointers */
-#define PATCHV(sym_name) do { \
+    /* copy vtable content into our local arrays so &_ZTV... + 2 == vtable[2] */
+#define PATCHV(arr, sym_name) do { \
     void *p = android_dlsym(h_ssc, sym_name); \
     if (!p) p = android_dlsym(h_apm, sym_name); \
-    if (p) sym_name ## _ptr = p; \
+    if (p) memcpy(arr, p, 8 * sizeof(void*)); \
     else fprintf(stderr, "[hybris] warning: vtable %s not found\n", sym_name); \
 } while(0)
 
-    /* use local pointer trick since macro won't work with long names */
-    void *p;
-    p = android_dlsym(h_ssc, "_ZTVNSt6__ndk120__shared_ptr_emplaceIN17storeservicescore22ProtocolDialogResponseENS_9allocatorIS2_EEEE");
-    if (!p) p = android_dlsym(h_apm, "_ZTVNSt6__ndk120__shared_ptr_emplaceIN17storeservicescore22ProtocolDialogResponseENS_9allocatorIS2_EEEE");
-    if (p) _ZTVNSt6__ndk120__shared_ptr_emplaceIN17storeservicescore22ProtocolDialogResponseENS_9allocatorIS2_EEEE = p;
-
-    p = android_dlsym(h_ssc, "_ZTVNSt6__ndk120__shared_ptr_emplaceIN17storeservicescore19CredentialsResponseENS_9allocatorIS2_EEEE");
-    if (!p) p = android_dlsym(h_apm, "_ZTVNSt6__ndk120__shared_ptr_emplaceIN17storeservicescore19CredentialsResponseENS_9allocatorIS2_EEEE");
-    if (p) _ZTVNSt6__ndk120__shared_ptr_emplaceIN17storeservicescore19CredentialsResponseENS_9allocatorIS2_EEEE = p;
-
-    p = android_dlsym(h_ssc, "_ZTVNSt6__ndk120__shared_ptr_emplaceIN17storeservicescore20RequestContextConfigENS_9allocatorIS2_EEEE");
-    if (!p) p = android_dlsym(h_apm, "_ZTVNSt6__ndk120__shared_ptr_emplaceIN17storeservicescore20RequestContextConfigENS_9allocatorIS2_EEEE");
-    if (p) _ZTVNSt6__ndk120__shared_ptr_emplaceIN17storeservicescore20RequestContextConfigENS_9allocatorIS2_EEEE = p;
-
-    p = android_dlsym(h_ssc, "_ZTVNSt6__ndk120__shared_ptr_emplaceIN13mediaplatform11HTTPMessageENS_9allocatorIS2_EEEE");
-    if (!p) p = android_dlsym(h_apm, "_ZTVNSt6__ndk120__shared_ptr_emplaceIN13mediaplatform11HTTPMessageENS_9allocatorIS2_EEEE");
-    if (p) _ZTVNSt6__ndk120__shared_ptr_emplaceIN13mediaplatform11HTTPMessageENS_9allocatorIS2_EEEE = p;
+    PATCHV(_ZTVNSt6__ndk120__shared_ptr_emplaceIN17storeservicescore22ProtocolDialogResponseENS_9allocatorIS2_EEEE,
+           "_ZTVNSt6__ndk120__shared_ptr_emplaceIN17storeservicescore22ProtocolDialogResponseENS_9allocatorIS2_EEEE");
+    PATCHV(_ZTVNSt6__ndk120__shared_ptr_emplaceIN17storeservicescore19CredentialsResponseENS_9allocatorIS2_EEEE,
+           "_ZTVNSt6__ndk120__shared_ptr_emplaceIN17storeservicescore19CredentialsResponseENS_9allocatorIS2_EEEE");
+    PATCHV(_ZTVNSt6__ndk120__shared_ptr_emplaceIN17storeservicescore20RequestContextConfigENS_9allocatorIS2_EEEE,
+           "_ZTVNSt6__ndk120__shared_ptr_emplaceIN17storeservicescore20RequestContextConfigENS_9allocatorIS2_EEEE");
+    PATCHV(_ZTVNSt6__ndk120__shared_ptr_emplaceIN13mediaplatform11HTTPMessageENS_9allocatorIS2_EEEE,
+           "_ZTVNSt6__ndk120__shared_ptr_emplaceIN13mediaplatform11HTTPMessageENS_9allocatorIS2_EEEE");
 
     fprintf(stderr, "[hybris] libs loaded\n");
 }
@@ -104,6 +106,131 @@ int __android_log_write(int prio, const char *tag, const char *text) {
 void _resolv_set_nameservers_for_net(unsigned netid, const char **servers,
                                      int numservers, const char *domains) {
     (void)netid; (void)servers; (void)numservers; (void)domains;
+}
+
+/* ── Bionic-compatible std::function callback objects ────────────────────────
+ *
+ * SVPlaybackLeaseManagerC2 expects two Bionic std::__ndk1::function<> objects
+ * passed by const reference.  Passing glibc std::function objects crashes
+ * because the copy constructor calls through Bionic's vtable which doesn't
+ * match glibc's internal layout.
+ *
+ * Bionic NDK r21 libc++ std::__ndk1::function<F> uses the OLD field order:
+ *   __f_ comes FIRST, __buf_ comes SECOND (opposite of newer LLVM libc++):
+ *
+ *   std::function<F> (32 bytes):
+ *   [0..7]:  __f_      = &__buf_[0] when SBO (= self + 8); NULL = empty
+ *   [8..15]: __buf_[0] = vptr of __func  (= &vtab[2])
+ *   [16..23]: __buf_[1] = fn pointer (the stored callable)
+ *   [24..31]: __buf_[2] = allocator state (zeroed for stateless)
+ *
+ * SBO path: Bionic checks (void*)__f_ == &__buf_[0], i.e. self[0] == self+8.
+ * If true it calls __f_->__clone(__base* dst) to copy __func into dest's __buf_.
+ *
+ * The vtable layout for __base<R(Args...)> (Bionic NDK r21, vptr → vtab[2]):
+ *   vptr[0] = vtab[2] ~__base() regular destructor
+ *   vptr[1] = vtab[3] ~__base() deleting destructor
+ *   vptr[2] = vtab[4] __clone() const → heap copy
+ *   vptr[3] = vtab[5] __clone(__base*) const → SBO placement copy
+ *   vptr[4] = vtab[6] __destroy() → SBO destroy (no free)
+ *   vptr[5] = vtab[7] __destroy_and_delete() → destroy + heap free
+ *   vptr[6] = vtab[8] operator()(Args&&...) → invoke
+ *
+ * Virtual functions receive `self = &__buf_[0]` (the __func object), so:
+ *   self[0] = vptr, self[1] = fn ptr, self[2] = allocator.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+/* callbacks exported from main.cpp */
+extern void endLeaseCbExport(const int *code_ptr);
+extern void pbErrCbExport(void *arg);
+
+/* ── endLeaseCallback: std::function<void(const int&)> ─────────────────────*/
+
+static void vf_el_destroy(void *self) { (void)self; }
+static void vf_el_destroy_and_delete(void *self) { free(self); }
+static void *vf_el_clone_heap(void *self) {
+    void *copy = malloc(3 * sizeof(void *));
+    memcpy(copy, self, 3 * sizeof(void *));
+    return copy;
+}
+static void vf_el_clone_sbo(void *self, void *dst) {
+    memcpy(dst, self, 3 * sizeof(void *));
+}
+static void vf_el_invoke(void *self, const int *code) {
+    void (*fn)(const int *) = (void (*)(const int *))((void **)self)[1];
+    fn(code);
+}
+
+static void *vtab_endlease[9] = {
+    (void *)0,                      /* [0] offset-to-top */
+    (void *)0,                      /* [1] RTTI          */
+    (void *)vf_el_destroy,          /* [2] ~__base() regular */
+    (void *)vf_el_destroy_and_delete, /* [3] ~__base() deleting */
+    (void *)vf_el_clone_heap,       /* [4] __clone() → heap  */
+    (void *)vf_el_clone_sbo,        /* [5] __clone(dst) → SBO */
+    (void *)vf_el_destroy,          /* [6] __destroy()        */
+    (void *)vf_el_destroy_and_delete, /* [7] __destroy_and_delete() */
+    (void *)vf_el_invoke,           /* [8] operator()(const int&) */
+};
+
+/* 32-byte buffer; set up by hybris_init_callbacks() */
+uint8_t endLeaseCallback[32];
+
+/* ── pbErrCallback: std::function<void(const shared_ptr<StoreErrorCond>&)> ─*/
+
+static void vf_pe_destroy(void *self) { (void)self; }
+static void vf_pe_destroy_and_delete(void *self) { free(self); }
+static void *vf_pe_clone_heap(void *self) {
+    void *copy = malloc(3 * sizeof(void *));
+    memcpy(copy, self, 3 * sizeof(void *));
+    return copy;
+}
+static void vf_pe_clone_sbo(void *self, void *dst) {
+    memcpy(dst, self, 3 * sizeof(void *));
+}
+static void vf_pe_invoke(void *self, void *arg) {
+    void (*fn)(void *) = (void (*)(void *))((void **)self)[1];
+    fn(arg);
+}
+
+static void *vtab_pberr[9] = {
+    (void *)0,
+    (void *)0,
+    (void *)vf_pe_destroy,
+    (void *)vf_pe_destroy_and_delete,
+    (void *)vf_pe_clone_heap,
+    (void *)vf_pe_clone_sbo,
+    (void *)vf_pe_destroy,
+    (void *)vf_pe_destroy_and_delete,
+    (void *)vf_pe_invoke,
+};
+
+uint8_t pbErrCallback[32];
+
+/* Call once from main() after init(), before SVPlaybackLeaseManagerC2.
+ *
+ * Bionic NDK r21 libc++ std::function<F> (32 bytes) OLD layout:
+ *   [0..7]:  __f_   = &__buf_[0] = self+8  (SBO path: __f_ points into __buf_)
+ *   [8..15]: __buf_[0] = vptr of __func (= &vtab[2])
+ *   [16..23]: __buf_[1] = fn pointer
+ *   [24..31]: __buf_[2] = allocator (zeroed for stateless)
+ *
+ * SBO check in Bionic: (void*)__f_ == &__buf_[0]  →  self[0] == self+8
+ * Invoke: self->__f_->operator()(args)
+ *         = obj at (self+8), vptr=*(self+8)=&vtab[2], call vptr[6]
+ */
+void hybris_init_callbacks(void) {
+    uint8_t *el = endLeaseCallback;
+    ((void **)el)[0] = el + 8;                    /* __f_ = &__buf_[0]    */
+    ((void **)el)[1] = &vtab_endlease[2];          /* __func vptr          */
+    ((void **)el)[2] = (void *)endLeaseCbExport;   /* fn ptr               */
+    ((void **)el)[3] = NULL;                       /* allocator (zeroed)   */
+
+    uint8_t *pe = pbErrCallback;
+    ((void **)pe)[0] = pe + 8;
+    ((void **)pe)[1] = &vtab_pberr[2];
+    ((void **)pe)[2] = (void *)pbErrCbExport;
+    ((void **)pe)[3] = NULL;
 }
 
 /* ── function stubs ──────────────────────────────────────────────────────── */
