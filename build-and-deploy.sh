@@ -26,6 +26,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 AML_DRM="/home/daksh/Git Projects/apple-music-linux/drm"
 
 NATIVE_BIN=/tmp/wrapper-native/drm-native
+NATIVE_SO=/tmp/wrapper-native/libdrm-native.so
 HYBRIS_LIB=/tmp/hybris-x86_64-build/libhybris-core.so
 LINKER_SO=/tmp/hybris-linker/q.so
 
@@ -34,7 +35,7 @@ echo "=== Building drm-native ==="
 bash "$HERE/build-native.sh"
 
 # ── 2. Verify build artefacts exist ──────────────────────────────────────────
-for f in "$NATIVE_BIN" "$HYBRIS_LIB" "$LINKER_SO"; do
+for f in "$NATIVE_BIN" "$NATIVE_SO" "$HYBRIS_LIB" "$LINKER_SO"; do
     if [[ ! -f "$f" ]]; then
         echo "ERROR: required file not found: $f"
         exit 1
@@ -48,6 +49,7 @@ echo "=== Deploying to $AML_DRM ==="
 mkdir -p "$AML_DRM/hybris-linker"
 
 cp -v "$NATIVE_BIN"  "$AML_DRM/drm-native"
+cp -v "$NATIVE_SO"   "$AML_DRM/libdrm-native.so"
 cp -v "$HYBRIS_LIB"  "$AML_DRM/libhybris-core.so"
 cp -v "$LINKER_SO"   "$AML_DRM/hybris-linker/q.so"
 
@@ -71,6 +73,7 @@ if [[ -d "$DIST_DRM" ]]; then
     echo "=== Also deploying to dist/resources/drm ==="
     mkdir -p "$DIST_DRM/hybris-linker"
     cp -v "$AML_DRM/drm-native"             "$DIST_DRM/drm-native"
+    cp -v "$AML_DRM/libdrm-native.so"       "$DIST_DRM/libdrm-native.so"
     cp -v "$AML_DRM/libhybris-core.so"      "$DIST_DRM/libhybris-core.so"
     cp -v "$AML_DRM/hybris-linker/q.so"     "$DIST_DRM/hybris-linker/q.so"
     chmod +x "$DIST_DRM/drm-native"
@@ -78,8 +81,14 @@ fi
 
 echo ""
 echo "=== Done ==="
-echo "  drm-native:        $AML_DRM/drm-native"
-echo "  libhybris-core.so: $AML_DRM/libhybris-core.so"
+echo "  drm-native:         $AML_DRM/drm-native"
+echo "  libdrm-native.so:   $AML_DRM/libdrm-native.so"
+echo "  libhybris-core.so:  $AML_DRM/libhybris-core.so"
 echo "  hybris-linker/q.so: $AML_DRM/hybris-linker/q.so"
 echo ""
-echo "Start the engine normally — it will auto-select drm-native over drm-rootless."
+echo "To build the engine with in-process hybris support:"
+echo "  cd engine && CGO_LDFLAGS='-L${AML_DRM} -Wl,-rpath,${AML_DRM}' \\"
+echo "    go build -tags hybris_backend -o ../electron/dist/resources/engine ."
+echo ""
+echo "Or just use the normal engine build — it will use ProcessBackend (TCP) for"
+echo "drm-native until the hybris_backend tag is set and libdrm-native.so links."

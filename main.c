@@ -44,9 +44,9 @@
 #include "dobby.h"
 #include <link.h>
 
-static struct shared_ptr apInf;
-static uint8_t leaseMgr[16];
-static struct shared_ptr reqCtx;
+struct shared_ptr apInf;
+uint8_t leaseMgr[16];
+struct shared_ptr reqCtx;
 struct gengetopt_args_info args_info;
 char *amUsername, *amPassword;
 struct shared_ptr GUID;
@@ -54,21 +54,30 @@ int decryptCount = 1000;
 int offlineFlag;
 char *device_infos[9];
 
-static char *g_storefront_id = NULL;
-static char *g_dev_token = NULL;
-static char *g_music_token = NULL;
+char *g_storefront_id = NULL;
+char *g_dev_token = NULL;
+char *g_music_token = NULL;
 
 // itun FairPlay decryptor for progressive MV
-static pthread_mutex_t g_itun_mutex = PTHREAD_MUTEX_INITIALIZER;
-static struct shared_ptr g_itun_decryptor = {.obj = NULL, .ctrl_blk = NULL};
-static unsigned long g_itun_adam_id = 0;
+pthread_mutex_t g_itun_mutex = PTHREAD_MUTEX_INITIALIZER;
+struct shared_ptr g_itun_decryptor = {.obj = NULL, .ctrl_blk = NULL};
+unsigned long g_itun_adam_id = 0;
+
+/* Library-mode callbacks — set by drm_lib_init(), NULL in binary mode. */
+#include "drm_lib.h"
+drm_auth_cb_t  g_drm_auth_cb  = NULL;
+void          *g_drm_auth_ud  = NULL;
+drm_state_cb_t g_drm_state_cb = NULL;
+void          *g_drm_state_ud = NULL;
 
 /* Write a single-word state token to base_dir/drm-state.
  * The Go engine reads this file via inotify to track wrapper lifecycle.
  * States: STARTING  LOGIN  WAITING_2FA  INITIALIZING_FAIRPLAY  RUNNING
  *         RECOVERY  FAILED  STOPPED
+ * In library mode, also fires g_drm_state_cb if set.
  */
 static void write_drm_state(const char *state) {
+    if (g_drm_state_cb) g_drm_state_cb(state, g_drm_state_ud);
     if (!args_info.base_dir_arg) return;
     char path[512];
     snprintf(path, sizeof(path), "%s/drm-state", args_info.base_dir_arg);
@@ -251,7 +260,12 @@ static void credentialHandler(struct shared_ptr *credReqHandler,
 
     if (need2FA) {
         write_drm_state("WAITING_2FA");
-        if (args_info.code_from_file_flag) {
+        if (g_drm_auth_cb) {
+            /* library mode: ask the Go engine for the 2FA code */
+            char code[16] = {0};
+            g_drm_auth_cb("2fa", code, sizeof(code), g_drm_auth_ud);
+            strncat(amPassword, code, 6);
+        } else if (args_info.code_from_file_flag) {
             fprintf(stderr, "[!] Enter your 2FA code into rootfs/%s/2fa.txt\n", args_info.base_dir_arg);
             fprintf(stderr, "[!] Example command: echo -n 123456 > rootfs/%s/2fa.txt\n", args_info.base_dir_arg);
             fprintf(stderr, "[!] Waiting for input...\n");
@@ -304,7 +318,7 @@ static void credentialHandler(struct shared_ptr *credReqHandler,
 }
 
 
-static inline void init() {
+void drm_init_internal(void) {
     // srand(time(0));
 
     // raise(SIGSTOP);
@@ -343,7 +357,7 @@ static inline void init() {
         &ret, GUID.obj, &conf1, &conf2, &conf3, &conf4);
 }
 
-static inline struct shared_ptr init_ctx() {
+struct shared_ptr drm_init_ctx(void) {
     fprintf(stderr, "[+] initializing ctx...\n");
     union std_string strBuf =
         new_std_string(strcat_b(args_info.base_dir_arg, "/mpl_db"));
@@ -441,7 +455,7 @@ extern int   is_recovery_active(void);
 /* Returns current RecoveryState as int: 0=Running 1=Scheduled 2=Refreshing 3=Failed */
 extern int   get_recovery_state(void);
 
-inline static uint8_t login(struct shared_ptr reqCtx) {
+uint8_t login(struct shared_ptr reqCtx) {
     fprintf(stderr, "[+] logging in...\n");
     if (file_exists(strcat_b(args_info.base_dir_arg, "/STOREFRONT_ID"))) {
         remove(strcat_b(args_info.base_dir_arg, "/STOREFRONT_ID"));
@@ -510,8 +524,8 @@ static inline void writefull(const int connfd, void *const buf,
     }
 }
 
-static void *FHinstance = NULL;   /* SVFootHillSessionCtrl 单例 (会话持有者) */
-static void *preshareCtx = NULL;  /* prefetch 上下文缓存 (adam=="0" 时复用) */
+void *FHinstance = NULL;   /* SVFootHillSessionCtrl 单例 (会话持有者) */
+void *preshareCtx = NULL;  /* prefetch 上下文缓存 (adam=="0" 时复用) */
 
 /*
  * 派生某 (adam, uri) 的 kdContext (解密上下文)。
@@ -527,7 +541,7 @@ static void *preshareCtx = NULL;  /* prefetch 上下文缓存 (adam=="0" 时复�
  *   - 每次调用都会重新 getPersistentKey (contentKey 每次会话会变),
  *     但 decryptContext 派生的 kdContext 是 per-track 稳定的。
  */
-inline static void *getKdContext(const char *const adam,
+void *getKdContext(const char *const adam,
                                  const char *const uri) {
     uint8_t isPreshare = (strcmp("0", adam) == 0);
 
@@ -1780,7 +1794,13 @@ void write_storefront_id(void) {
 char *get_guid() {
     char *ret[2];
     _ZN17storeservicescore10DeviceGUID4guidEv(ret, GUID.obj);
-    char *guid = _ZNK13mediaplatform4Data5bytesEv(ret[0]);
+    char *raw = _ZNK13mediaplatform4Data5bytesEv(ret[0]);
+    size_t len = _ZNK13mediaplatform4Data6lengthEv(ret[0]);
+    /* Data::bytes() is NOT null-terminated — copy to a null-terminated buffer */
+    char *guid = malloc(len + 1);
+    if (!guid) return NULL;
+    memcpy(guid, raw, len);
+    guid[len] = '\0';
     return guid;
 }
 
@@ -1792,7 +1812,8 @@ long long getCurrentTimeMillis() {
 
 
 char *get_music_user_token(char *guid, char *authToken, struct shared_ptr reqCtx){
-    uint8_t ptr[480];
+    uint8_t *ptr = (uint8_t *)calloc(1, 2048);
+    if (!ptr) return NULL;
     *(void **)(ptr) =
         &_ZTVNSt6__ndk120__shared_ptr_emplaceIN13mediaplatform11HTTPMessageENS_9allocatorIS2_EEEE +
         2;
@@ -1819,10 +1840,10 @@ char *get_music_user_token(char *guid, char *authToken, struct shared_ptr reqCtx
     }
 
     snprintf(body, body_size, "{\"guid\":\"%s\",\"assertion\":\"%s\",\"tcc-acceptance-date\":\"%lld\"}", guid, authToken, getCurrentTimeMillis());
-
     _ZN13mediaplatform11HTTPMessage11setBodyDataEPcm(httpMessage.obj, body, strlen(body));
-    free(body);
-    uint8_t urlRequest[512];
+    /* NOTE: do NOT free body before run() — new hybris stores pointer, not copy */
+    uint8_t *urlRequest = (uint8_t *)calloc(1, 2048);
+    if (!urlRequest) { free(ptr); return NULL; }
     _ZN17storeservicescore10URLRequestC2ERKNSt6__ndk110shared_ptrIN13mediaplatform11HTTPMessageEEERKNS2_INS_14RequestContextEEE(urlRequest, &httpMessage, &reqCtx);
     _ZN17storeservicescore10URLRequest3runEv(urlRequest);
     struct shared_ptr *err = _ZNK17storeservicescore10URLRequest5errorEv(urlRequest);
@@ -1835,9 +1856,8 @@ char *get_music_user_token(char *guid, char *authToken, struct shared_ptr reqCtx
     struct shared_ptr *urlResp = _ZNK17storeservicescore10URLRequest8responseEv(urlRequest);
     struct shared_ptr *resp = _ZNK17storeservicescore11URLResponse18underlyingResponseEv(urlResp->obj);
     void *http_message_obj = resp->obj;
-    void** data_ptr_location = (void**)((char*)http_message_obj + 48);
-    void* data_ptr = *data_ptr_location;
-    char *respBody = _ZNK13mediaplatform4Data5bytesEv(data_ptr);
+    void* data_ptr = *(void**)((char*)http_message_obj + 48);
+    char *respBody = data_ptr ? _ZNK13mediaplatform4Data5bytesEv(data_ptr) : NULL;
     cJSON *json = cJSON_Parse(respBody);
     cJSON *token_obj = cJSON_GetObjectItemCaseSensitive(json, "music_token");
     char *token = cJSON_GetStringValue(token_obj);
@@ -1855,7 +1875,8 @@ char *get_music_user_token(char *guid, char *authToken, struct shared_ptr reqCtx
 
 
 char* get_dev_token(struct shared_ptr reqCtx) {
-    uint8_t ptr[480];
+    uint8_t *ptr = (uint8_t *)calloc(1, 2048);
+    if (!ptr) return NULL;
     *(void **)(ptr) =
         &_ZTVNSt6__ndk120__shared_ptr_emplaceIN13mediaplatform11HTTPMessageENS_9allocatorIS2_EEEE +
         2;
@@ -1863,7 +1884,8 @@ char* get_dev_token(struct shared_ptr reqCtx) {
     union std_string url = new_std_string("https://sf-api-token-service.itunes.apple.com/apiToken");
     union std_string method = new_std_string("GET");
     _ZN13mediaplatform11HTTPMessageC2ENSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEES7_(httpMessage.obj, &url, &method);
-    uint8_t urlRequest[512];
+    uint8_t *urlRequest = (uint8_t *)calloc(1, 2048);
+    if (!urlRequest) { free(ptr); return NULL; }
     _ZN17storeservicescore10URLRequestC2ERKNSt6__ndk110shared_ptrIN13mediaplatform11HTTPMessageEEERKNS2_INS_14RequestContextEEE(urlRequest, &httpMessage, &reqCtx);
     union std_string clientIdName = new_std_string("clientId");
     union std_string clientIdValue = new_std_string("musicAndroid");
@@ -1935,6 +1957,7 @@ int offline_available() {
     return 0;
 }
 
+#ifndef DRM_LIB_BUILD
 int main(int argc, char *argv[]) {
     cmdline_parser(argc, argv, &args_info);
     char *copy_that_needs_to_be_freed = NULL;
@@ -1944,10 +1967,10 @@ int main(int argc, char *argv[]) {
     install_hooks();
     #endif
 
-    init();
+    drm_init_internal();
     hybris_init_callbacks();
     fprintf(stderr, "[main-cp1] calling init_ctx\n"); fflush(stderr);
-    reqCtx = init_ctx();
+    reqCtx = drm_init_ctx();
     fprintf(stderr, "[main-cp2] init_ctx returned reqCtx.obj=%p ctrl=%p\n", reqCtx.obj, reqCtx.ctrl_blk); fflush(stderr);
     write_drm_state("STARTING");
     fprintf(stderr, "[main-cp3] write_drm_state done\n"); fflush(stderr);
@@ -2051,3 +2074,4 @@ int main(int argc, char *argv[]) {
 
     return new_socket();
 }
+#endif /* DRM_LIB_BUILD */

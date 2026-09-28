@@ -24,7 +24,7 @@ RUN aria2c -x 16 -o ndk.zip \
     && rm ndk.zip
 
 # Copy source (no glob — explicit)
-COPY cmdline.c cmdline.h cmdline.ggo ./
+COPY cmdline.c cmdline.h wrapper.ggo ./
 COPY main.c main.cpp ./
 COPY wrapper.c wrapper-rootless.c ./
 COPY import.h ./

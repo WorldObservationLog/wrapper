@@ -640,6 +640,12 @@ char *_ZNK13mediaplatform4Data5bytesEv(void *data) {
     return fn(data);
 }
 
+size_t _ZNK13mediaplatform4Data6lengthEv(void *data) {
+    static size_t (*fn)(void*) = NULL;
+    if (!fn) fn = sym("_ZNK13mediaplatform4Data6lengthEv");
+    return fn(data);
+}
+
 void *_ZN17storeservicescore10URLRequestC2ERKNSt6__ndk110shared_ptrIN13mediaplatform11HTTPMessageEEERKNS2_INS_14RequestContextEEE(
     void *obj, struct shared_ptr *msg, struct shared_ptr *ctx) {
     static void *(*fn)(void*,struct shared_ptr*,struct shared_ptr*) = NULL;

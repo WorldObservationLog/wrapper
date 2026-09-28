@@ -42,25 +42,25 @@ CFLAGS=(
 
 # ── Compile C sources ─────────────────────────────────────────────────────────
 echo "--- compiling main.c ---"
-gcc "${CFLAGS[@]}" -c "$HERE/main.c" -o "$BUILD/main.o"
+gcc "${CFLAGS[@]}" -fPIC -c "$HERE/main.c" -o "$BUILD/main.o"
 
 echo "--- compiling cmdline.c ---"
-gcc "${CFLAGS[@]}" -c "$HERE/cmdline.c" -o "$BUILD/cmdline.o"
+gcc "${CFLAGS[@]}" -fPIC -c "$HERE/cmdline.c" -o "$BUILD/cmdline.o"
 
 echo "--- compiling hybris_stubs.c ---"
-gcc "${CFLAGS[@]}" -c "$HERE/hybris_stubs.c" -o "$BUILD/hybris_stubs.o"
+gcc "${CFLAGS[@]}" -fPIC -c "$HERE/hybris_stubs.c" -o "$BUILD/hybris_stubs.o"
 
 echo "--- compiling hybris_ctor.c ---"
-gcc "${CFLAGS[@]}" -c "$HERE/hybris_ctor.c" -o "$BUILD/hybris_ctor.o"
+gcc "${CFLAGS[@]}" -fPIC -c "$HERE/hybris_ctor.c" -o "$BUILD/hybris_ctor.o"
 
 echo "--- compiling cJSON.c ---"
-gcc -O2 -c "$CJSON_DIR/cJSON.c" -o "$BUILD/cjson.o"
+gcc -O2 -fPIC -c "$CJSON_DIR/cJSON.c" -o "$BUILD/cjson.o"
 
 # ── Compile C++ source ────────────────────────────────────────────────────────
 echo "--- compiling main.cpp ---"
-g++ -std=c++17 "${CFLAGS[@]}" -c "$HERE/main.cpp" -o "$BUILD/main_cpp.o"
+g++ -std=c++17 "${CFLAGS[@]}" -fPIC -c "$HERE/main.cpp" -o "$BUILD/main_cpp.o"
 
-# ── Link ──────────────────────────────────────────────────────────────────────
+# ── Link binary ───────────────────────────────────────────────────────────────
 echo "--- linking drm-native ---"
 g++ \
     "$BUILD/main.o" \
@@ -77,9 +77,36 @@ g++ \
     -Wl,-rpath,"$HYBRIS_BUILD" \
     -o "$BUILD/drm-native"
 
+# ── Compile drm_lib.c for the shared library ──────────────────────────────────
+echo "--- compiling drm_lib.c ---"
+gcc "${CFLAGS[@]}" -fPIC -DDRM_LIB_BUILD -c "$HERE/drm_lib.c" -o "$BUILD/drm_lib.o"
+
+# Re-compile main.c with -DDRM_LIB_BUILD (guards out int main()) for the .so
+echo "--- compiling main.c (lib mode) ---"
+gcc "${CFLAGS[@]}" -fPIC -DDRM_LIB_BUILD -c "$HERE/main.c" -o "$BUILD/main_lib.o"
+
+# ── Link shared library ───────────────────────────────────────────────────────
+echo "--- linking libdrm-native.so ---"
+g++ -shared \
+    "$BUILD/main_lib.o" \
+    "$BUILD/cmdline.o" \
+    "$BUILD/hybris_stubs.o" \
+    "$BUILD/hybris_ctor.o" \
+    "$BUILD/cjson.o" \
+    "$BUILD/main_cpp.o" \
+    "$BUILD/drm_lib.o" \
+    -L"$HYBRIS_BUILD" -lhybris-core \
+    -lcurl \
+    -lpthread \
+    -ldl \
+    -lm \
+    -Wl,-rpath,"\$ORIGIN" \
+    -o "$BUILD/libdrm-native.so"
+
 echo ""
 echo "=== Build successful ==="
 echo "  Binary: $BUILD/drm-native"
+echo "  Library: $BUILD/libdrm-native.so"
 echo ""
 echo "Run with:"
 echo "  HYBRIS_LINKER_DIR=/tmp/hybris-linker \\"
