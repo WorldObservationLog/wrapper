@@ -315,7 +315,14 @@ int drm_lib_decrypt(void *kd_ctx, uint8_t *sample, uint32_t size)
 {
     if (!kd_ctx || !sample)
         return -1;
-    NfcRKVnxuKZy04KWbdFu71Ou(kd_ctx, (uint32_t)5, sample, sample, (size_t)size);
+    /* getKdContext() returns the key-context slot, not the context itself:
+     * handle() in main.c (the proven TCP path) calls the decryptor with
+     * *kdContext. Passing kd_ctx directly decrypts with the wrong context and
+     * yields garbage samples. */
+    void *ctx = *(void **)kd_ctx;
+    if (!ctx)
+        return -1;
+    NfcRKVnxuKZy04KWbdFu71Ou(ctx, (uint32_t)5, sample, sample, (size_t)size);
     return 0;
 }
 
