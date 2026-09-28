@@ -52,7 +52,7 @@ extern void          *g_drm_state_ud;
 /* init/codec helpers in main.c / hybris_stubs.c */
 extern void hybris_init_callbacks(void);
 extern void start_recovery_thread(void);
-extern void hybris_init_libs(const char *lib64_path);
+extern int hybris_init_libs(const char *lib64_path);
 
 /* account helpers */
 extern char *get_account_storefront_id(struct shared_ptr reqCtx);
@@ -101,7 +101,11 @@ int drm_lib_init(const drm_lib_config_t *cfg)
      * load time when running in-process), so we re-run init here. */
     if (cfg->lib64_dir && cfg->lib64_dir[0]) {
         setenv("HYBRIS_ANDROID_LIB64", cfg->lib64_dir, 1);
-        hybris_init_libs(cfg->lib64_dir);
+        if (hybris_init_libs(cfg->lib64_dir) != 0) {
+            g_init_result = -1;
+            pthread_mutex_unlock(&g_init_mutex);
+            return -1;
+        }
     }
 
     /* Synthesise a fake args_info from cfg so the rest of main.c still works */

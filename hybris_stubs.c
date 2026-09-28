@@ -48,7 +48,10 @@ static void *sym(const char *name) {
 }
 
 /* ── init: load Android libs, patch vtables ─────────────────────────────── */
-void hybris_init_libs(const char *lib64) {
+/* Returns 0 on success, -1 if an Android lib cannot be loaded. It must not
+ * exit: in library mode (libdrm-native.so inside the Go engine) that would
+ * take the whole engine down instead of just disabling DRM. */
+int hybris_init_libs(const char *lib64) {
     char path[512];
 
     /* pre-load implicit system libs so verneed checks pass */
@@ -60,11 +63,11 @@ void hybris_init_libs(const char *lib64) {
 
     snprintf(path, sizeof(path), "%s/libstoreservicescore.so", lib64);
     h_ssc = android_dlopen(path, RTLD_NOW_GLOBAL);
-    if (!h_ssc) { fprintf(stderr, "[hybris] cannot load libstoreservicescore.so: %s\n", android_dlerror()); exit(1); }
+    if (!h_ssc) { fprintf(stderr, "[hybris] cannot load libstoreservicescore.so: %s\n", android_dlerror()); return -1; }
 
     snprintf(path, sizeof(path), "%s/libandroidappmusic.so", lib64);
     h_apm = android_dlopen(path, RTLD_NOW_GLOBAL);
-    if (!h_apm) { fprintf(stderr, "[hybris] cannot load libandroidappmusic.so: %s\n", android_dlerror()); exit(1); }
+    if (!h_apm) { fprintf(stderr, "[hybris] cannot load libandroidappmusic.so: %s\n", android_dlerror()); return -1; }
 
     /* copy vtable content into our local arrays so &_ZTV... + 2 == vtable[2] */
 #define PATCHV(arr, sym_name) do { \
@@ -84,6 +87,7 @@ void hybris_init_libs(const char *lib64) {
            "_ZTVNSt6__ndk120__shared_ptr_emplaceIN13mediaplatform11HTTPMessageENS_9allocatorIS2_EEEE");
 
     fprintf(stderr, "[hybris] libs loaded\n");
+    return 0;
 }
 
 /* ── special cases ───────────────────────────────────────────────────────── */

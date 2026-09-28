@@ -12,14 +12,17 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-extern void hybris_init_libs(const char *lib64_path);
+extern int hybris_init_libs(const char *lib64_path);
 
 __attribute__((constructor))
 static void hybris_auto_init(void) {
     const char *lib64 = getenv("HYBRIS_ANDROID_LIB64");
     if (!lib64) {
-        fprintf(stderr, "[hybris] HYBRIS_ANDROID_LIB64 not set — Android libs not loaded\n");
+        /* Normal in library mode: drm_lib_init() loads the libs later. */
+        fprintf(stderr, "[hybris] HYBRIS_ANDROID_LIB64 not set — deferring Android lib load\n");
         return;
     }
-    hybris_init_libs(lib64);
+    /* Standalone drm-native binary: nothing can work without the libs. */
+    if (hybris_init_libs(lib64) != 0)
+        exit(1);
 }

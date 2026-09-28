@@ -15,7 +15,9 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 BUILD=/tmp/wrapper-native
-HYBRIS_BUILD=/tmp/hybris-x86_64-build
+# Directory holding libhybris-core.so; override to link against another copy
+# (e.g. the one deployed in apple-music-linux/drm).
+HYBRIS_BUILD="${HYBRIS_BUILD:-/tmp/hybris-x86_64-build}"
 HYBRIS_INC="/home/daksh/Git Projects/libhybris/hybris/include"
 CJSON_DIR="$BUILD/cjson"
 
