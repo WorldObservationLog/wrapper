@@ -9,3 +9,6 @@
 Dockerfile
 README.md
 build
+# CI build leftovers at the repo root (the NDK alone is several GB)
+android-ndk-r23b
+*.zip
