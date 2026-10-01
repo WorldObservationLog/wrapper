@@ -33,6 +33,7 @@ Compiles `drm-native` and `libdrm-native.so` directly against glibc using host `
 #### Prerequisites
 - Host build tools: `gcc`, `g++`, `curl`, `patchelf`
 - Built `libhybris-core.so` and linker plugin `q.so`
+- Dobby: `dobby.h` and a built `libdobby.a` (set `DOBBY_SRC` / `DOBBY_BUILD`; defaults `/tmp/dobby-src`, `/tmp/dobby-build`)
 
 #### Build
 ```bash
