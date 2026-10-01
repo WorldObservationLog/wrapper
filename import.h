@@ -252,7 +252,11 @@ extern struct shared_ptr *_ZN22SVPlaybackLeaseManager12requestAssetERKmRKNSt6__n
 );
 extern int _ZNK23SVPlaybackAssetResponse13hasValidAssetEv(void *);
 extern struct shared_ptr *_ZNK23SVPlaybackAssetResponse13playbackAssetEv(void *);
+extern int _ZNK23SVPlaybackAssetResponse9errorCodeEv(void *);
+extern union std_string *_ZNK23SVPlaybackAssetResponse12errorMessageEv(void *, void *);
 extern union std_string *_ZNK17storeservicescore13PlaybackAsset9URLStringEv(void *, uint8_t *);
+extern union std_string *_ZNK17storeservicescore13PlaybackAsset7flavorEv(void *, void *);
+extern union std_string *_ZNK17storeservicescore13PlaybackAsset11downloadKeyEv(void *, void *);
 
 extern union std_string *_ZNK17storeservicescore14RequestContext20storeFrontIdentifierERKNSt6__ndk110shared_ptrINS_6URLBagEEE(void *, void *, struct shared_ptr *);
 
@@ -266,6 +270,7 @@ extern void _ZN13mediaplatform11HTTPMessage9setHeaderERKNSt6__ndk112basic_string
 extern void _ZN13mediaplatform11HTTPMessage11setBodyDataEPcm(void *,char *, u_long);
 extern void *_ZN17storeservicescore10DeviceGUID4guidEv(void *, void *);
 extern char *_ZNK13mediaplatform4Data5bytesEv(void *);
+extern size_t _ZNK13mediaplatform4Data6lengthEv(void *);
 extern void *_ZN17storeservicescore10URLRequestC2ERKNSt6__ndk110shared_ptrIN13mediaplatform11HTTPMessageEEERKNS2_INS_14RequestContextEEE(void *, struct shared_ptr *, struct shared_ptr *);
 extern void *_ZN17storeservicescore10URLRequest19setRequestParameterERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEES9_(void *, union std_string *, union std_string *);
 extern void *_ZN17storeservicescore10URLRequest3runEv(void *);
@@ -283,6 +288,7 @@ extern struct shared_ptr *_ZN17storeservicescore16PurchaseResponse5errorEv(void 
 extern struct std_vector _ZNK17storeservicescore16PurchaseResponse5itemsEv(void *);
 extern struct std_vector _ZNK17storeservicescore12PurchaseItem6assetsEv(void *);
 extern union std_string *_ZNK17storeservicescore13PurchaseAsset3URLEv(void *, void *);
+extern union std_string *_ZNK17storeservicescore13PurchaseAsset11downloadKeyEv(void *, void *);
 extern int _ZNK17storeservicescore19StoreErrorCondition9errorCodeEv(void *);
 extern const char *_ZNK17storeservicescore19StoreErrorCondition4whatEv(void *);
 extern struct shared_ptr *_ZNK17storeservicescore20AuthenticateResponse5errorEv(void *);
@@ -291,8 +297,46 @@ extern union std_string *_ZNK17storeservicescore20AuthenticateResponse15customer
 extern void *_ZN17storeservicescore14RequestContext8fairPlayEv(void *, void *);
 extern struct std_vector _ZN17storeservicescore8FairPlay21getSubscriptionStatusEv(void *);
 
+// --- itun FairPlay decryption (progressive MV) ---
 
+// FairPlayData layout: [bytes_ptr(8) | dataType(4) | length(4)] = 16 bytes
+struct FairPlayData {
+    const uint8_t *bytes_ptr;
+    uint32_t dataType;
+    uint32_t length;
+};
+
+// FairPlaySinf layout: [identifier(8) | dpInfoData_sp(16) | sinfData_sp(16) | sinf2Data_sp(16)] = 56 bytes
+struct FairPlaySinf {
+    int64_t identifier;
+    struct shared_ptr dpInfoData;
+    struct shared_ptr sinfData;
+    struct shared_ptr sinf2Data;
+};
+
+// PlaybackAsset::sinfs() const — returns std::vector<FairPlaySinf> by value
+extern struct std_vector *_ZNK17storeservicescore13PlaybackAsset5sinfsEv(
+    struct std_vector *ret, void *playbackAsset);
+
+// SVDecryptorFactory::create(SVDecryptorType const&, uint8_t const*, uint32_t const&,
+//   uint8_t const*, uint32_t const&, SVDecryptorTrackType const&, bool const&, bool const&)
+// Returns shared_ptr<SVDecryptor> via hidden first param
+extern struct shared_ptr *_ZN18SVDecryptorFactory6createERKN11SVDecryptor15SVDecryptorTypeEPKhRKjS5_S7_RKNS0_20SVDecryptorTrackTypeERKbSC_(
+    struct shared_ptr *ret, int *protType, const uint8_t *keyData, uint32_t *keyLen,
+    const uint8_t *ivData, uint32_t *ivLen, int *trackType, uint8_t *b1, uint8_t *b2);
+
+// SVPastisDecryptor::decryptSample(uint8_t const*, uint32_t const&, uint32_t*)
+// Decrypts in-place; outLen receives the output byte count
+extern void _ZN17SVPastisDecryptor13decryptSampleEPKhRKjPj(
+    void *decryptor, const uint8_t *data, const uint32_t *dataLen, uint32_t *outLen);
+
+
+#ifndef IMPORT_H_NO_DATA_DEFS
 const char *const android_id = "dc28071e981c439e";
+#else
+extern const char *const android_id;
+#endif
+#ifndef IMPORT_H_NO_DATA_DEFS
 const char *const fairplayCert = "MIIEzjCCA7agAwIBAgIIAXAVjHFZDjgwDQYJKoZIhvcNAQEFBQAwfzELMAkGA1UEBhMCVVMxEz"
 								 "ARBgNVBAoMCkFwcGxlIEluYy4xJjAkBgNVBAsMHUFwcGxlIENlcnRpZmljYXRpb24gQXV0aG9y"
 								 "aXR5MTMwMQYDVQQDDCpBcHBsZSBLZXkgU2VydmljZXMgQ2VydGlmaWNhdGlvbiBBdXRob3JpdH"
@@ -340,3 +384,6 @@ const char *const fairplayCert = "MIIEzjCCA7agAwIBAgIIAXAVjHFZDjgwDQYJKoZIhvcNAQ
 								 "yC93lQmiE0r5RqPpe/IWUzwoZxri8qnsghVFxCBEcMB+U4PJR8WeAkPrji8po2JLYurvgNRhGk"
 								 "DKcAFPuGEpXdF86hPts+07zazsP0fBjBSVgP3jqb8G31w5W+O+wBW0B9uCf3s0vXU4LuJTAyww"
 								 "s2ImZ7O/AaY/uXWOyIUMUKPgL1/QJieB7pBoENIJ2CeJS2M3iv00ssmCmTEJ";
+#else
+extern const char *const fairplayCert;
+#endif
