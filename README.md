@@ -100,7 +100,7 @@ Available for x86_64 and arm64.
    ```bash
    docker run --privileged \
      -v ./rootfs/data:/app/rootfs/data \
-     -p 10020:10020 -p 20020:20020 -p 30020:30020 -p 40020:40020 \
+     -p 10020:10020 -p 20020:20020 -p 30020:30020 -p 40020:40020 -p 50020:50020 -p 60020:60020 \
      -e args="-H 0.0.0.0" \
      ghcr.io/worldobservationlog/wrapper:local
    ```
