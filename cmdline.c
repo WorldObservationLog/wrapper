@@ -41,7 +41,7 @@ const char *gengetopt_args_info_help[] = {
   "  -M, --m3u8-port=INT         (default=`20020')",
   "  -A, --account-port=INT      (default=`30020')",
   "  -K, --key-port=INT          (default=`40020')",
-  "  -G, --mv-port=INT           (default=`40020')",
+  "  -G, --mv-port=INT           (default=`50020')",
   "  -P, --proxy=STRING          (default=`')",
   "  -L, --login=STRING        username:password",
   "  -F, --code-from-file        (default=off)",
@@ -101,7 +101,7 @@ void clear_args (struct gengetopt_args_info *args_info)
   args_info->account_port_orig = NULL;
   args_info->key_port_arg = 40020;
   args_info->key_port_orig = NULL;
-  args_info->mv_port_arg = 40020;
+  args_info->mv_port_arg = 50020;
   args_info->mv_port_orig = NULL;
   args_info->proxy_arg = gengetopt_strdup ("");
   args_info->proxy_orig = NULL;
@@ -650,7 +650,7 @@ cmdline_parser_internal (
 
           if (update_arg( (void *)&(args_info->mv_port_arg),
                &(args_info->mv_port_orig), &(args_info->mv_port_given),
-              &(local_args_info.mv_port_given), optarg, 0, "40020", ARG_INT,
+              &(local_args_info.mv_port_given), optarg, 0, "50020", ARG_INT,
               check_ambiguity, override, 0, 0,
               "mv-port", 'G',
               additional_error))

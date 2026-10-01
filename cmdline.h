@@ -54,7 +54,7 @@ struct gengetopt_args_info
   int key_port_arg;	/**< @brief  (default='40020').  */
   char * key_port_orig;	/**< @brief  original value given at command line.  */
   const char *key_port_help; /**< @brief  help description.  */
-  int mv_port_arg;	/**< @brief  (default='40020').  */
+  int mv_port_arg;	/**< @brief  (default='50020').  */
   char * mv_port_orig;	/**< @brief  original value given at command line.  */
   const char *mv_port_help; /**< @brief  help description.  */
   char * proxy_arg;	/**< @brief  (default='').  */

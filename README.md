@@ -144,7 +144,7 @@ Usage: wrapper [OPTION]...
   -M, --m3u8-port=INT       M3U8 / playlist proxy port (default: 20020)
   -A, --account-port=INT    Account management port (default: 30020)
   -K, --key-port=INT        Key service port (default: 40020)
-  -G, --mv-port=INT         Music video port (default: 40020)
+  -G, --mv-port=INT         Music video port (default: 50020)
   -P, --proxy=STRING        HTTP proxy URL (default: none)
   -L, --login=STRING        Apple ID login credentials (username:password)
   -F, --code-from-file      Read 2FA code from file rather than stdin (default: off)
