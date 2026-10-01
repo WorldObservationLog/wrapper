@@ -152,7 +152,7 @@ Usage: wrapper [OPTION]...
   -I, --device-info=STRING  9-field client device descriptor
 ```
 
-## Services (4 TCP ports)
+## Services (6 TCP ports)
 
 | Port | Option | Protocol | Purpose |
 |------|--------|----------|---------|
@@ -160,6 +160,8 @@ Usage: wrapper [OPTION]...
 | 20020 | `-M` | Binary | M3U8 stream URL: `[1B len][adamId digits]` → M3U8 URL |
 | 30020 | `-A` | HTTP | Account info JSON |
 | 40020 | `-K` | HTTP | Key service: `?adamId=&uri=` → `{contentKey, ctx, state, rcx/rax/rdx/r9/rbp}` decryption template |
+| 50020 | `-G` | see source | Progressive music-video (MV) service (`new_socket_mv`) |
+| 60020 | `-G` + 10000 | see source | itun FairPlay decrypt for progressive MV (`new_socket_itun`) |
 
 ### 40020 key service
 
