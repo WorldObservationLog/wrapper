@@ -1249,19 +1249,21 @@ static void r1_capture_cb(void *address, DobbyRegisterContext *ctx) {
     g_cap_done = 1;
 }
 
-/* dl_iterate_phdr 回调: 定位 libCoreLSKD.so 加载基址 */
-static int _find_lib_cb(struct dl_phdr_info *info, size_t size, void *data) {
-    if (info->dlpi_name && strstr(info->dlpi_name, "libCoreLSKD.so")) {
-        *(uintptr_t *)data = info->dlpi_addr;
-        return 1;
-    }
-    return 0;
-}
-
 /* 返回 libCoreLSKD.so 的运行时加载基址 (失败返回 0) */
 static uintptr_t get_lib_core_lskd_base(void) {
+    FILE *f = fopen("/proc/self/maps", "r");
+    if (!f) return 0;
+    char line[512];
     uintptr_t base = 0;
-    dl_iterate_phdr(_find_lib_cb, &base);
+    while (fgets(line, sizeof line, f)) {
+        if (!strstr(line, "libCoreLSKD.so")) continue;
+        unsigned long start, off;
+        if (sscanf(line, "%lx-%*lx %*4s %lx", &start, &off) == 2 && off == 0) {
+            base = start;
+            break;
+        }
+    }
+    fclose(f);
     return base;
 }
 
