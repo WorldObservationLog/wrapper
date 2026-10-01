@@ -19,6 +19,8 @@ BUILD=/tmp/wrapper-native
 # (e.g. the one deployed in apple-music-linux/drm).
 HYBRIS_BUILD="${HYBRIS_BUILD:-/tmp/hybris-x86_64-build}"
 HYBRIS_INC="/home/daksh/Git Projects/libhybris/hybris/include"
+DOBBY_SRC="${DOBBY_SRC:-/tmp/dobby-src}"
+DOBBY_BUILD="${DOBBY_BUILD:-/tmp/dobby-build}"
 CJSON_DIR="$BUILD/cjson"
 
 echo "=== host-native DRM wrapper ==="
@@ -34,11 +36,12 @@ fi
 CFLAGS=(
     -O2
     -Wall
-    -DMyRelease           # disables dobby; guarded by #ifndef MyRelease in main.c
+    -DMyRelease           # disables curl/log debug hooks only; the Dobby R1 hook stays enabled
     -D_GNU_SOURCE
     -include sys/time.h   # gettimeofday — not explicitly included in main.c, provided by NDK headers
     -I"$HERE"             # import.h, cmdline.h
     -I"$CJSON_DIR"        # cJSON.h
+    -I"$DOBBY_SRC/include"      # dobby.h
     -I"$HYBRIS_INC"       # hybris/android/dlopen.h etc. (for reference, not required)
 )
 
@@ -71,6 +74,7 @@ g++ \
     "$BUILD/hybris_ctor.o" \
     "$BUILD/cjson.o" \
     "$BUILD/main_cpp.o" \
+    "$DOBBY_BUILD/libdobby.a" \
     -L"$HYBRIS_BUILD" -lhybris-core \
     -lcurl \
     -lpthread \
@@ -97,6 +101,7 @@ g++ -shared \
     "$BUILD/cjson.o" \
     "$BUILD/main_cpp.o" \
     "$BUILD/drm_lib.o" \
+    "$DOBBY_BUILD/libdobby.a" \
     -L"$HYBRIS_BUILD" -lhybris-core \
     -lcurl \
     -lpthread \
