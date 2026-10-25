@@ -124,6 +124,7 @@ All responses use:
 | `--log-level` | `info` | `debug`, `info`, `warn`, `error` |
 | `--log-file` | — | log file path |
 | `--token-refresh-interval` | `1800` | background refresh interval in seconds |
+| `--no-cors` | CORS on | stop sending CORS headers (`Access-Control-Allow-Origin: *`) and answering `OPTIONS` preflights |
 
 ## Device info
 
