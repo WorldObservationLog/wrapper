@@ -49,6 +49,7 @@ static std::string g_base_dir = "data";
 static std::string g_log_level = "info";
 static std::string g_log_file;
 static int g_token_refresh_interval = 1800;
+static bool g_cors_enabled = false;
 
 /* ---- Token state and background refresh ---- */
 static std::mutex g_tokens_mutex;
@@ -466,7 +467,7 @@ static void print_usage() {
     LOG_INFO("usage: lite [--login user:pass] [--host 127.0.0.1] [--port 12340]");
     LOG_INFO("            [--device-info STR] [--base-dir data] [--proxy URL] [--debug]");
     LOG_INFO("            [--log-level debug|info|warn|error] [--log-file PATH]");
-    LOG_INFO("            [--token-refresh-interval SECONDS]");
+    LOG_INFO("            [--token-refresh-interval SECONDS] [--cors]");
 }
 
 static LogLevel parse_log_level(const std::string& s) {
@@ -509,6 +510,7 @@ int main(int argc, char* argv[]) {
         else if (arg == "--log-level" && i + 1 < cmdline_args.size()) g_log_level = cmdline_args[++i];
         else if (arg == "--log-file" && i + 1 < cmdline_args.size()) g_log_file = cmdline_args[++i];
         else if (arg == "--token-refresh-interval" && i + 1 < cmdline_args.size()) g_token_refresh_interval = atoi(cmdline_args[++i].c_str());
+        else if (arg == "--cors") g_cors_enabled = true;
         else if (arg == "--proxy" && i + 1 < cmdline_args.size()) {
             g_proxy = cmdline_args[++i];
             setenv("all_proxy", g_proxy.c_str(), 1);
@@ -628,6 +630,25 @@ int main(int argc, char* argv[]) {
     svr.set_keep_alive_timeout(30);
     svr.set_payload_max_length(1 << 20);
     svr.set_tcp_nodelay(true);
+
+    /* CORS (opt-in via --cors; the API has no authentication): default
+       headers are copied into every response (handlers, error handler and
+       httplib's own 4xx/5xx), so browsers can call the API from any origin.
+       OPTIONS preflights (e.g. POST /license with a JSON body) are answered
+       with 204, including Chromium's Private Network Access opt-in so public
+       pages may reach a loopback/LAN instance. */
+    if (g_cors_enabled) {
+        svr.set_default_headers({
+            {"Access-Control-Allow-Origin", "*"},
+            {"Access-Control-Allow-Methods", "GET, POST, OPTIONS"},
+            {"Access-Control-Allow-Headers", "*"},
+            {"Access-Control-Max-Age", "86400"},
+        });
+        svr.Options(".*", [](const httplib::Request&, httplib::Response& res) {
+            res.set_header("Access-Control-Allow-Private-Network", "true");
+            res.status = 204;
+        });
+    }
 
     svr.set_pre_routing_handler([](const httplib::Request& req, httplib::Response& res) {
         (void)res;
