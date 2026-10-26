@@ -217,6 +217,27 @@ char *strcat_b(char *dest, char* src) {
     return result;
 }
 
+/* The statically-linked SQLite inside libmediaplatform uses the bionic (unix)
+ * VFS, whose unixFullPathname() treats any path not starting with '/' as
+ * relative and prepends getcwd(). A Windows path like "C:\Users\..." is thus
+ * mangled into "C:\adam-build/C:\Users\...", and the DB open fails ("Database
+ * connection lost or invalid."). Hand libmediaplatform a POSIX-absolute path
+ * ("/C:/Users/...") so the VFS takes its absolute branch — no getcwd, no lstat
+ * symlink loop. The hook table (windows_hook_table.c) strips the leading '/'
+ * back off before the real Win32 open(). Backslashes become forward slashes.
+ * A path that is already POSIX-absolute is returned unchanged. */
+char *drm_posix_path(const char *win) {
+    if (!win) return NULL;
+    size_t n = strlen(win);
+    char *r = malloc(n + 2);
+    if (!r) return NULL;
+    size_t j = 0;
+    if (win[0] != '/') r[j++] = '/';   /* prepend '/' for "C:\..." style */
+    for (size_t i = 0; i < n; i++) r[j++] = (win[i] == '\\') ? '/' : win[i];
+    r[j] = '\0';
+    return r;
+}
+
 int split_string_safe(const char *str, const char *delim, char **components, 
                       int max_components, char **out_copy_to_free) 
 {
@@ -409,7 +430,7 @@ void drm_init_internal(void) {
 struct shared_ptr drm_init_ctx(void) {
     DRM_DEBUG("[+] initializing ctx...\n");
     union std_string strBuf =
-        new_std_string(strcat_b(args_info.base_dir_arg, "/mpl_db"));
+        new_std_string(drm_posix_path(strcat_b(args_info.base_dir_arg, "/mpl_db")));
 
     struct shared_ptr reqCtx;
     DRM_DEBUG("[cp1] make_shared RequestContext\n");
@@ -472,7 +493,7 @@ struct shared_ptr drm_init_ctx(void) {
     _ZN17storeservicescore14RequestContext4initERKNSt6__ndk110shared_ptrINS_20RequestContextConfigEEE(
         &buf, reqCtx.obj, &reqCtxCfg);
     DRM_DEBUG("[cp16] setFairPlayDirectoryPath\n");
-    strBuf = new_std_string(args_info.base_dir_arg);
+    strBuf = new_std_string(drm_posix_path(args_info.base_dir_arg));
     _ZN17storeservicescore14RequestContext24setFairPlayDirectoryPathERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(
         reqCtx.obj, &strBuf);
 
