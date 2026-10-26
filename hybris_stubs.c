@@ -204,18 +204,23 @@ extern void pbErrCbExport(void *arg);
 
 /* ── endLeaseCallback: std::function<void(const int&)> ─────────────────────*/
 
-static void vf_el_destroy(void *self) { (void)self; }
-static void vf_el_destroy_and_delete(void *self) { free(self); }
-static void *vf_el_clone_heap(void *self) {
+/* These are entered through the guest std::function vtable, so the guest calls
+ * them with the SysV AMD64 ABI (this in rdi). On Windows the wrapper is built
+ * for the host MS ABI, so without sysv_abi the args land in the wrong registers
+ * (self/dst read as null) and the clone's memcpy faults. The inner callback
+ * (endLeaseCbExport) is a host function, so that call stays host-ABI. */
+static void __attribute__((sysv_abi)) vf_el_destroy(void *self) { (void)self; }
+static void __attribute__((sysv_abi)) vf_el_destroy_and_delete(void *self) { free(self); }
+static void *__attribute__((sysv_abi)) vf_el_clone_heap(void *self) {
     void *copy = malloc(3 * sizeof(void *));
     memcpy(copy, self, 3 * sizeof(void *));
     return copy;
 }
-static void vf_el_clone_sbo(void *self, void *dst) {
+static void __attribute__((sysv_abi)) vf_el_clone_sbo(void *self, void *dst) {
     memcpy(dst, self, 3 * sizeof(void *));
 }
-static void vf_el_invoke(void *self, const int *code) {
-    void (__attribute__((sysv_abi)) *fn)(const int *) = (void (__attribute__((sysv_abi)) *)(const int *))((void **)self)[1];
+static void __attribute__((sysv_abi)) vf_el_invoke(void *self, const int *code) {
+    void (*fn)(const int *) = (void (*)(const int *))((void **)self)[1];
     fn(code);
 }
 
@@ -236,18 +241,18 @@ uint8_t endLeaseCallback[32];
 
 /* ── pbErrCallback: std::function<void(const shared_ptr<StoreErrorCond>&)> ─*/
 
-static void vf_pe_destroy(void *self) { (void)self; }
-static void vf_pe_destroy_and_delete(void *self) { free(self); }
-static void *vf_pe_clone_heap(void *self) {
+static void __attribute__((sysv_abi)) vf_pe_destroy(void *self) { (void)self; }
+static void __attribute__((sysv_abi)) vf_pe_destroy_and_delete(void *self) { free(self); }
+static void *__attribute__((sysv_abi)) vf_pe_clone_heap(void *self) {
     void *copy = malloc(3 * sizeof(void *));
     memcpy(copy, self, 3 * sizeof(void *));
     return copy;
 }
-static void vf_pe_clone_sbo(void *self, void *dst) {
+static void __attribute__((sysv_abi)) vf_pe_clone_sbo(void *self, void *dst) {
     memcpy(dst, self, 3 * sizeof(void *));
 }
-static void vf_pe_invoke(void *self, void *arg) {
-    void (__attribute__((sysv_abi)) *fn)(void *) = (void (__attribute__((sysv_abi)) *)(void *))((void **)self)[1];
+static void __attribute__((sysv_abi)) vf_pe_invoke(void *self, void *arg) {
+    void (*fn)(void *) = (void (*)(void *))((void **)self)[1];
     fn(arg);
 }
 
