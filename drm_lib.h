@@ -11,6 +11,7 @@
 
 #pragma once
 #include <stdint.h>
+#include <stdio.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -94,6 +95,17 @@ int drm_lib_decrypt_itun(unsigned long adam_id, uint8_t *sample,
 
 /* drm_lib_is_recovery_active — 1 if lease recovery is in progress. */
 int drm_lib_is_recovery_active(void);
+
+/* Verbose wrapper tracing (init checkpoints, per-key and per-asset details),
+ * printed only when the ADAM_DRM_DEBUG environment variable is set. */
+int drm_lib_debug_enabled(void);
+#define DRM_DEBUG(...) \
+    do { if (drm_lib_debug_enabled()) fprintf(stderr, __VA_ARGS__); } while (0)
+
+/* drm_lib_login — authenticate with Apple ID after drm_lib_init() has
+ * already run (session-reuse path).  Calls login() on the existing reqCtx.
+ * Returns 0 on success, -1 on failure. */
+int drm_lib_login(const char *username, const char *password);
 
 #ifdef __cplusplus
 }

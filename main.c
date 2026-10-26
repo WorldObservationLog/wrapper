@@ -33,23 +33,65 @@
 #include <stdarg.h>
 #include <ctype.h>
 
+#ifdef _WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#define SOCK_CLOEXEC 0
+#ifndef SO_REUSEPORT
+#define SO_REUSEPORT SO_REUSEADDR
+#endif
+#define read(fd, buffer, length) recv((SOCKET)(fd), (char *)(buffer), (int)(length), 0)
+#define write(fd, buffer, length) send((SOCKET)(fd), (const char *)(buffer), (int)(length), 0)
+#define close(fd) closesocket((SOCKET)(fd))
+static inline int hybris_windows_setsockopt(int fd, int level, int option,
+                                            const void *value, int length)
+{
+    return setsockopt((SOCKET)fd, level, option, (const char *)value, length);
+}
+#define setsockopt hybris_windows_setsockopt
+static inline int accept4(int fd, struct sockaddr *address, int *address_length,
+                          int flags)
+{
+    (void)flags;
+    return (int)accept((SOCKET)fd, address, address_length);
+}
+#ifndef EHOSTDOWN
+#define EHOSTDOWN ENETDOWN
+#endif
+#ifndef ENONET
+#define ENONET ENETDOWN
+#endif
+static inline int hybris_windows_setenv(const char *name, const char *value,
+                                        int overwrite)
+{
+    if (!overwrite && getenv(name) != NULL) return 0;
+    return _putenv_s(name, value != NULL ? value : "");
+}
+#define setenv hybris_windows_setenv
+#else
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
+#include <link.h>
+#endif
 #include <sys/stat.h>
 
 #include "import.h"
 #include "cmdline.h"
 #include "cJSON.h"
 #include "dobby.h"
-#include <link.h>
 
 struct shared_ptr apInf;
 uint8_t leaseMgr[16];
 struct shared_ptr reqCtx;
 struct gengetopt_args_info args_info;
 char *amUsername, *amPassword;
-struct shared_ptr GUID;
+/* Length of the bare password in amPassword. Apple asks for the 2FA code once
+ * per attempt and the code is appended to the password, so it is cut back to
+ * this length first; otherwise a second prompt sends password+code1+code2. */
+size_t amPasswordLen;
+struct shared_ptr g_GUID;
 int decryptCount = 1000;
 int offlineFlag;
 char *device_infos[9];
@@ -112,7 +154,7 @@ int curl_easy_setopt_hook(void *curl, int32_t option, ...) {
     if (option == CURLOPT_SSL_VERIFYPEER || 
         option == CURLOPT_SSL_VERIFYHOST || 
         option == CURLOPT_PINNEDPUBLICKEY) {
-        fprintf(stderr, "[+] hooked curl_easy_setopt %d\n", option);
+        DRM_DEBUG("[+] hooked curl_easy_setopt %d\n", option);
         orig_curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
         return orig_curl_easy_setopt(curl, option, 0L);
     }  else {
@@ -206,7 +248,7 @@ static void dialogHandler(long j, struct shared_ptr *protoDialogPtr,
                           struct shared_ptr *respHandler) {
     const char *const title = std_string_data(
         _ZNK17storeservicescore14ProtocolDialog5titleEv(protoDialogPtr->obj));
-    fprintf(stderr, "[.] dialogHandler: {title: %s, message: %s}\n", title,
+    DRM_DEBUG("[.] dialogHandler: {title: %s, message: %s}\n", title,
             std_string_data(_ZNK17storeservicescore14ProtocolDialog7messageEv(
                 protoDialogPtr->obj)));
 
@@ -232,11 +274,16 @@ static void dialogHandler(long j, struct shared_ptr *protoDialogPtr,
             }
         }
     } else {
-        for (struct shared_ptr *b = butVec->begin; b != butVec->end; ++b) {
-            fprintf(
-                stderr, "[.] button %p: %s\n", b->obj,
-                std_string_data(
-                    _ZNK17storeservicescore14ProtocolButton5titleEv(b->obj)));
+        // Auto-dismiss: select the first button ("Not Now" for concurrent-stream dialogs, etc.).
+        // Without a selected button handleProtocolDialogResponse dereferences NULL → SIGSEGV.
+        struct shared_ptr *first_btn = butVec->begin;
+        if (first_btn != (struct shared_ptr *)butVec->end) {
+            DRM_DEBUG("[.] dialogHandler: auto-dismissing '%s'\n",
+                    std_string_data(
+                        _ZNK17storeservicescore14ProtocolButton5titleEv(
+                            first_btn->obj)));
+            _ZN17storeservicescore22ProtocolDialogResponse17setSelectedButtonERKNSt6__ndk110shared_ptrINS_14ProtocolButtonEEE(
+                diagResp.obj, first_btn);
         }
     }
     _ZN20androidstoreservices28AndroidPresentationInterface28handleProtocolDialogResponseERKlRKNSt6__ndk110shared_ptrIN17storeservicescore22ProtocolDialogResponseEEE(
@@ -256,6 +303,8 @@ static void credentialHandler(struct shared_ptr *credReqHandler,
             credReqHandler->obj)),
         need2FA ? "true" : "false");
 
+    if (amPasswordLen && strlen(amPassword) > amPasswordLen)
+        amPassword[amPasswordLen] = '\0';
     int passLen = strlen(amPassword);
 
     if (need2FA) {
@@ -322,10 +371,10 @@ void drm_init_internal(void) {
     // srand(time(0));
 
     // raise(SIGSTOP);
-    fprintf(stderr, "[+] starting...\n");
+    DRM_DEBUG("[+] starting...\n");
     setenv("ANDROID_DNS_MODE", "local", 1);
     if (args_info.proxy_given) {
-        fprintf(stderr, "[+] Using proxy %s\n", args_info.proxy_arg);
+        DRM_DEBUG("[+] Using proxy %s\n", args_info.proxy_arg);
         setenv("all_proxy", args_info.proxy_arg, 1);
     }
 
@@ -348,26 +397,26 @@ void drm_init_internal(void) {
     //     foothill, &root, &natLib);
     // _ZN8FootHill24defaultContextIdentifierEv(foothill);
 
-    _ZN17storeservicescore10DeviceGUID8instanceEv(&GUID);
+    _ZN17storeservicescore10DeviceGUID8instanceEv(&g_GUID);
 
     static uint8_t ret[88];
     static unsigned int conf3 = 29;
     static uint8_t conf4 = 1;
     _ZN17storeservicescore10DeviceGUID9configureERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEES9_RKjRKb(
-        &ret, GUID.obj, &conf1, &conf2, &conf3, &conf4);
+        &ret, g_GUID.obj, &conf1, &conf2, &conf3, &conf4);
 }
 
 struct shared_ptr drm_init_ctx(void) {
-    fprintf(stderr, "[+] initializing ctx...\n");
+    DRM_DEBUG("[+] initializing ctx...\n");
     union std_string strBuf =
         new_std_string(strcat_b(args_info.base_dir_arg, "/mpl_db"));
 
     struct shared_ptr reqCtx;
-    fprintf(stderr, "[cp1] make_shared RequestContext\n"); fflush(stderr);
+    DRM_DEBUG("[cp1] make_shared RequestContext\n");
     _ZNSt6__ndk110shared_ptrIN17storeservicescore14RequestContextEE11make_sharedIJRNS_12basic_stringIcNS_11char_traitsIcEENS_9allocatorIcEEEEEEES3_DpOT_(
         &reqCtx, &strBuf);
 
-    fprintf(stderr, "[cp2] setup vtable ptr arr=%p arr+2=%p\n",
+    DRM_DEBUG("[cp2] setup vtable ptr arr=%p arr+2=%p\n",
         &_ZTVNSt6__ndk120__shared_ptr_emplaceIN17storeservicescore20RequestContextConfigENS_9allocatorIS2_EEEE,
         &_ZTVNSt6__ndk120__shared_ptr_emplaceIN17storeservicescore20RequestContextConfigENS_9allocatorIS2_EEEE + 2); fflush(stderr);
     static uint8_t ptr[480];
@@ -375,75 +424,75 @@ struct shared_ptr drm_init_ctx(void) {
         &_ZTVNSt6__ndk120__shared_ptr_emplaceIN17storeservicescore20RequestContextConfigENS_9allocatorIS2_EEEE +
         2;
     struct shared_ptr reqCtxCfg = {.obj = ptr + 32, .ctrl_blk = ptr};
-    fprintf(stderr, "[cp3] reqCtxCfg ctrl_blk=%p obj=%p vptr=%p\n", reqCtxCfg.ctrl_blk, reqCtxCfg.obj, *(void**)ptr); fflush(stderr);
+    DRM_DEBUG("[cp3] reqCtxCfg ctrl_blk=%p obj=%p vptr=%p\n", reqCtxCfg.ctrl_blk, reqCtxCfg.obj, *(void**)ptr);
 
-    fprintf(stderr, "[cp4] RequestContextConfigC2\n"); fflush(stderr);
+    DRM_DEBUG("[cp4] RequestContextConfigC2\n");
     _ZN17storeservicescore20RequestContextConfigC2Ev(reqCtxCfg.obj);
-    fprintf(stderr, "[cp5] setBaseDirectoryPath\n"); fflush(stderr);
+    DRM_DEBUG("[cp5] setBaseDirectoryPath\n");
     _ZN17storeservicescore20RequestContextConfig20setBaseDirectoryPathERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(
         reqCtxCfg.obj, &strBuf);
-    fprintf(stderr, "[cp6] setClientIdentifier\n"); fflush(stderr);
+    DRM_DEBUG("[cp6] setClientIdentifier\n");
     strBuf = new_std_string(device_infos[0]);
     _ZN17storeservicescore20RequestContextConfig19setClientIdentifierERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(
         reqCtxCfg.obj, &strBuf);
-    fprintf(stderr, "[cp7] setVersionIdentifier\n"); fflush(stderr);
+    DRM_DEBUG("[cp7] setVersionIdentifier\n");
     strBuf = new_std_string(device_infos[1]);
     _ZN17storeservicescore20RequestContextConfig20setVersionIdentifierERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(
         reqCtxCfg.obj, &strBuf);
-    fprintf(stderr, "[cp8] setPlatformIdentifier\n"); fflush(stderr);
+    DRM_DEBUG("[cp8] setPlatformIdentifier\n");
     strBuf = new_std_string(device_infos[2]);
     _ZN17storeservicescore20RequestContextConfig21setPlatformIdentifierERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(
         reqCtxCfg.obj, &strBuf);
-    fprintf(stderr, "[cp9] setProductVersion\n"); fflush(stderr);
+    DRM_DEBUG("[cp9] setProductVersion\n");
     strBuf = new_std_string(device_infos[3]);
     _ZN17storeservicescore20RequestContextConfig17setProductVersionERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(
         reqCtxCfg.obj, &strBuf);
-    fprintf(stderr, "[cp10] setDeviceModel\n"); fflush(stderr);
+    DRM_DEBUG("[cp10] setDeviceModel\n");
     strBuf = new_std_string(device_infos[4]);
     _ZN17storeservicescore20RequestContextConfig14setDeviceModelERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(
         reqCtxCfg.obj, &strBuf);
-    fprintf(stderr, "[cp11] setBuildVersion\n"); fflush(stderr);
+    DRM_DEBUG("[cp11] setBuildVersion\n");
     strBuf = new_std_string(device_infos[5]);
     _ZN17storeservicescore20RequestContextConfig15setBuildVersionERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(
         reqCtxCfg.obj, &strBuf);
-    fprintf(stderr, "[cp12] setLocaleIdentifier\n"); fflush(stderr);
+    DRM_DEBUG("[cp12] setLocaleIdentifier\n");
     strBuf = new_std_string(device_infos[6]);
     _ZN17storeservicescore20RequestContextConfig19setLocaleIdentifierERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(
         reqCtxCfg.obj, &strBuf);
-    fprintf(stderr, "[cp13] setLanguageIdentifier\n"); fflush(stderr);
+    DRM_DEBUG("[cp13] setLanguageIdentifier\n");
     strBuf = new_std_string(device_infos[7]);
     _ZN17storeservicescore20RequestContextConfig21setLanguageIdentifierERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(
         reqCtxCfg.obj, &strBuf);
 
-    fprintf(stderr, "[cp14] RequestContextManager::configure\n"); fflush(stderr);
+    DRM_DEBUG("[cp14] RequestContextManager::configure\n");
     _ZN21RequestContextManager9configureERKNSt6__ndk110shared_ptrIN17storeservicescore14RequestContextEEE(
         &reqCtx);
-    fprintf(stderr, "[cp15] RequestContext::init\n"); fflush(stderr);
+    DRM_DEBUG("[cp15] RequestContext::init\n");
     static uint8_t buf[88];
     _ZN17storeservicescore14RequestContext4initERKNSt6__ndk110shared_ptrINS_20RequestContextConfigEEE(
         &buf, reqCtx.obj, &reqCtxCfg);
-    fprintf(stderr, "[cp16] setFairPlayDirectoryPath\n"); fflush(stderr);
+    DRM_DEBUG("[cp16] setFairPlayDirectoryPath\n");
     strBuf = new_std_string(args_info.base_dir_arg);
     _ZN17storeservicescore14RequestContext24setFairPlayDirectoryPathERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(
         reqCtx.obj, &strBuf);
 
-    fprintf(stderr, "[cp17] make_shared AndroidPresentationInterface\n"); fflush(stderr);
+    DRM_DEBUG("[cp17] make_shared AndroidPresentationInterface\n");
     _ZNSt6__ndk110shared_ptrIN20androidstoreservices28AndroidPresentationInterfaceEE11make_sharedIJEEES3_DpOT_(
         &apInf);
 
-    fprintf(stderr, "[cp18] setDialogHandler\n"); fflush(stderr);
+    DRM_DEBUG("[cp18] setDialogHandler\n");
     _ZN20androidstoreservices28AndroidPresentationInterface16setDialogHandlerEPFvlNSt6__ndk110shared_ptrIN17storeservicescore14ProtocolDialogEEENS2_INS_36AndroidProtocolDialogResponseHandlerEEEE(
         apInf.obj, &dialogHandler);
 
-    fprintf(stderr, "[cp19] setCredentialsHandler\n"); fflush(stderr);
+    DRM_DEBUG("[cp19] setCredentialsHandler\n");
     _ZN20androidstoreservices28AndroidPresentationInterface21setCredentialsHandlerEPFvNSt6__ndk110shared_ptrIN17storeservicescore18CredentialsRequestEEENS2_INS_33AndroidCredentialsResponseHandlerEEEE(
         apInf.obj, &credentialHandler);
 
-    fprintf(stderr, "[cp20] setPresentationInterface\n"); fflush(stderr);
+    DRM_DEBUG("[cp20] setPresentationInterface\n");
     _ZN17storeservicescore14RequestContext24setPresentationInterfaceERKNSt6__ndk110shared_ptrINS_21PresentationInterfaceEEE(
         reqCtx.obj, &apInf);
 
-    fprintf(stderr, "[cp21] init_ctx done\n"); fflush(stderr);
+    DRM_DEBUG("[cp21] init_ctx done\n");
     return reqCtx;
 }
 
@@ -456,7 +505,7 @@ extern int   is_recovery_active(void);
 extern int   get_recovery_state(void);
 
 uint8_t login(struct shared_ptr reqCtx) {
-    fprintf(stderr, "[+] logging in...\n");
+    DRM_DEBUG("[+] logging in...\n");
     if (file_exists(strcat_b(args_info.base_dir_arg, "/STOREFRONT_ID"))) {
         remove(strcat_b(args_info.base_dir_arg, "/STOREFRONT_ID"));
     }
@@ -557,7 +606,7 @@ void *getKdContext(const char *const adam,
             return cached;
     }
 
-    fprintf(stderr, "[.] adamId: %s, uri: %s\n", adam, uri);
+    DRM_DEBUG("[.] adamId: %s, uri: %s\n", adam, uri);
 
     union std_string defaultId = new_std_string(adam);
     union std_string keyUri = new_std_string(uri);
@@ -576,17 +625,6 @@ void *getKdContext(const char *const adam,
 
     if (persistK.obj == NULL)
         return NULL;
-
-    // DUMP persistentKey (SVFootHillPKey: first field is std::string ckc)
-    {
-        union std_string *pkey = (union std_string *)persistK.obj;
-        const char *pdata = std_string_data(pkey);
-        fprintf(stderr, "[+] DUMP persistentKey: %s\n", pdata);
-        char *pkey_path = strcat_b(args_info.base_dir_arg, "/persistent_key.txt");
-        FILE *kf = fopen(pkey_path, "w");
-        if (kf) { fprintf(kf, "%s", pdata); fclose(kf); }
-        free(pkey_path);
-    }
 
     struct shared_ptr SVFootHillPContext;
     _ZN21SVFootHillSessionCtrl14decryptContextERKNSt6__ndk112basic_stringIcNS0_11char_traitsIcEENS0_9allocatorIcEEEERKN11SVDecryptor15SVDecryptorTypeERKb(
@@ -614,8 +652,18 @@ void *getKdContext(const char *const adam,
  * 在 40020 key server 捕获 content 模板前调用, 把 FHinstance 会话归一化到
  * 与真实解密流程一致的状态 (否则 standalone 的 ctx/r1_entry 会不一致)。
  */
+/* Bumped on every recovery refresh so callers can drop cached key contexts. */
+volatile unsigned g_decrypt_epoch = 0;
+
+/* Serialises every call into Apple's FairPlay code (key opens, sample decrypts,
+ * this reset), as handle() does by serving one connection at a time. Holding it
+ * here also means no decrypt can run on a context resetAllContexts() is freeing. */
+pthread_mutex_t g_fp_call_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 void refresh_decrypt_ctx(void) {
     uint8_t autom = 1;
+    pthread_mutex_lock(&g_fp_call_mutex);
+    __atomic_add_fetch(&g_decrypt_epoch, 1, __ATOMIC_SEQ_CST);
 
     /* Request a new playback lease from Apple. */
     _ZN22SVPlaybackLeaseManager12requestLeaseERKb(leaseMgr, &autom);
@@ -634,6 +682,7 @@ void refresh_decrypt_ctx(void) {
      * under g_ctx_mutex internally. */
     getKdContext("0", "skd://itunes.apple.com/P000000000/s1/e1");
 
+    pthread_mutex_unlock(&g_fp_call_mutex);
     fprintf(stderr, "[!] refreshed context\n");
 }
 
@@ -814,9 +863,9 @@ const char* get_m3u8_method_download(struct shared_ptr reqCtx, unsigned long ada
                 const char *key = std_string_data(key_str);
                 if (key && *key) {
                     *out_key = strdup(key);
-                    fprintf(stderr, "[.] downloadKey for %lu: %.16s...\n", adam, *out_key);
+                    DRM_DEBUG("[.] downloadKey for %lu: %.16s...\n", adam, *out_key);
                 } else {
-                    fprintf(stderr, "[.] downloadKey for %lu: empty\n", adam);
+                    DRM_DEBUG("[.] downloadKey for %lu: empty\n", adam);
                 }
                 free(key_str);
             }
@@ -873,9 +922,9 @@ const char* get_m3u8_method_play(uint8_t leaseMgr[16], unsigned long adam, char 
                 const char *key = std_string_data(key_str);
                 if (key && *key) {
                     *out_key = strdup(key);
-                    fprintf(stderr, "[.] lease downloadKey for %lu: %.16s...\n", adam, *out_key);
+                    DRM_DEBUG("[.] lease downloadKey for %lu: %.16s...\n", adam, *out_key);
                 } else {
-                    fprintf(stderr, "[.] lease downloadKey for %lu: empty\n", adam);
+                    DRM_DEBUG("[.] lease downloadKey for %lu: empty\n", adam);
                 }
                 free(key_str);
             }
@@ -921,7 +970,7 @@ static const char* request_video_flavors(uint8_t leaseMgr[16], unsigned long ada
 
     int hv = _ZNK23SVPlaybackAssetResponse13hasValidAssetEv(ptr_result.obj);
     struct shared_ptr *playbackAsset = _ZNK23SVPlaybackAssetResponse13playbackAssetEv(ptr_result.obj);
-    fprintf(stderr, "[.] video: resp=%p hasValid=%d assetPtr=%p asset.obj=%p for %lu\n",
+    DRM_DEBUG("[.] video: resp=%p hasValid=%d assetPtr=%p asset.obj=%p for %lu\n",
             ptr_result.obj, hv,
             (void*)playbackAsset,
             playbackAsset ? (void*)playbackAsset->obj : NULL,
@@ -955,9 +1004,9 @@ static const char* request_video_flavors(uint8_t leaseMgr[16], unsigned long ada
             const char *key = std_string_data(key_str);
             if (key && *key) {
                 *out_key = strdup(key);
-                fprintf(stderr, "[.] video: downloadKey for %lu len=%zu\n", adam, strlen(*out_key));
+                DRM_DEBUG("[.] video: downloadKey for %lu len=%zu\n", adam, strlen(*out_key));
             } else {
-                fprintf(stderr, "[.] video: downloadKey empty for %lu (expected for MV)\n", adam);
+                DRM_DEBUG("[.] video: downloadKey empty for %lu (expected for MV)\n", adam);
             }
             free(key_str);
         }
@@ -972,11 +1021,11 @@ static const char* request_video_flavors(uint8_t leaseMgr[16], unsigned long ada
         if (sinf_vec.begin && sinf_vec.end > sinf_vec.begin) {
             sinf_count = ((char*)sinf_vec.end - (char*)sinf_vec.begin) / sizeof(struct FairPlaySinf);
         }
-        fprintf(stderr, "[.] video: sinfs count=%zu for %lu\n", sinf_count, adam);
+        DRM_DEBUG("[.] video: sinfs count=%zu for %lu\n", sinf_count, adam);
 
         if (sinf_count > 0) {
             struct FairPlaySinf *sinf = (struct FairPlaySinf *)sinf_vec.begin;
-            fprintf(stderr, "[.] video: sinf[0] id=%ld sinfData.obj=%p sinf2Data.obj=%p\n",
+            DRM_DEBUG("[.] video: sinf[0] id=%ld sinfData.obj=%p sinf2Data.obj=%p\n",
                     (long)sinf->identifier, sinf->sinfData.obj, sinf->sinf2Data.obj);
 
             const uint8_t *key_data = NULL;
@@ -988,13 +1037,13 @@ static const char* request_video_flavors(uint8_t leaseMgr[16], unsigned long ada
                 struct FairPlayData *fpd = (struct FairPlayData *)sinf->sinfData.obj;
                 key_data = fpd->bytes_ptr;
                 key_len = fpd->length;
-                fprintf(stderr, "[.] video: sinfData bytes=%p len=%u\n", key_data, key_len);
+                DRM_DEBUG("[.] video: sinfData bytes=%p len=%u\n", key_data, key_len);
             }
             if (sinf->sinf2Data.obj) {
                 struct FairPlayData *fpd2 = (struct FairPlayData *)sinf->sinf2Data.obj;
                 iv_data = fpd2->bytes_ptr;
                 iv_len = fpd2->length;
-                fprintf(stderr, "[.] video: sinf2Data bytes=%p len=%u\n", iv_data, iv_len);
+                DRM_DEBUG("[.] video: sinf2Data bytes=%p len=%u\n", iv_data, iv_len);
             }
 
             if (key_data && key_len > 0) {
@@ -1004,7 +1053,7 @@ static const char* request_video_flavors(uint8_t leaseMgr[16], unsigned long ada
                 uint8_t b_false = 0;
                 struct shared_ptr new_dec = {0};
 
-                fprintf(stderr, "[.] video: creating SVPastisDecryptor protType=%d trackType=%d keyLen=%u ivLen=%u\n",
+                DRM_DEBUG("[.] video: creating SVPastisDecryptor protType=%d trackType=%d keyLen=%u ivLen=%u\n",
                         prot_type, track_type, key_len, iv_len);
 
                 _ZN18SVDecryptorFactory6createERKN11SVDecryptor15SVDecryptorTypeEPKhRKjS5_S7_RKNS0_20SVDecryptorTrackTypeERKbSC_(
@@ -1013,7 +1062,7 @@ static const char* request_video_flavors(uint8_t leaseMgr[16], unsigned long ada
                     &track_type, &b_true, &b_false);
 
                 if (new_dec.obj) {
-                    fprintf(stderr, "[+] video: SVPastisDecryptor created at %p for %lu\n", new_dec.obj, adam);
+                    DRM_DEBUG("[+] video: SVPastisDecryptor created at %p for %lu\n", new_dec.obj, adam);
                     pthread_mutex_lock(&g_itun_mutex);
                     g_itun_decryptor = new_dec;
                     g_itun_adam_id = adam;
@@ -1025,7 +1074,7 @@ static const char* request_video_flavors(uint8_t leaseMgr[16], unsigned long ada
         }
     }
 
-    fprintf(stderr, "[.] video: URL for %lu = %.80s...\n", adam, result);
+    DRM_DEBUG("[.] video: URL for %lu = %.80s...\n", adam, result);
     return result;
 }
 
@@ -1036,7 +1085,7 @@ const char* get_progressive_method_play(uint8_t leaseMgr[16], unsigned long adam
     if (out_key) *out_key = NULL;
     const char *url = request_video_flavors(leaseMgr, adam, out_key);
     if (url) {
-        fprintf(stderr, "[.] progressive: got URL for %lu\n", adam);
+        DRM_DEBUG("[.] progressive: got URL for %lu\n", adam);
         return url;
     }
     fprintf(stderr, "[!] progressive: no valid asset for %lu\n", adam);
@@ -1085,7 +1134,7 @@ void handle_m3u8(const int connfd) {
             fprintf(stderr, "[.] failed to get m3u8 of adamId: %ld\n", adamID);
             writefull(connfd, "\n", sizeof("\n"));
         } else {
-            fprintf(stderr, "[.] m3u8 adamId: %ld, url: %s\n", adamID, m3u8);
+            DRM_DEBUG("[.] m3u8 adamId: %ld, url: %s\n", adamID, m3u8);
             char *with_newline = malloc(strlen(m3u8) + 2);
             if (with_newline) {
                 strcpy(with_newline, m3u8);
@@ -1275,7 +1324,7 @@ static void setup_r1_hook(void) {
     void *r1 = (void *)(base + 0x1d5709);
     if (DobbyInstrument(r1, r1_capture_cb) == 0) {
         g_r1_hooked = 1;
-        fprintf(stderr, "[+] R1 hook installed @ %p (base 0x%lx)\n", r1, base);
+        DRM_DEBUG("[+] R1 hook installed @ %p (base 0x%lx)\n", r1, base);
     } else {
         fprintf(stderr, "[!] R1 hook install failed @ %p\n", r1);
     }
@@ -1388,7 +1437,7 @@ void handle_key_request(const int connfd) {
         if (!uri) { free(adamId); key_json_error(connfd, "500", "oom"); return; }
     }
 
-    fprintf(stderr, "[.] key request: adamId=%s uri=%s\n", adamId, uri);
+    DRM_DEBUG("[.] key request: adamId=%s uri=%s\n", adamId, uri);
     char *contentKey = get_content_key(adamId, uri);
     if (!contentKey) {
         free(adamId); free(uri);
@@ -1429,7 +1478,7 @@ void handle_key_request(const int connfd) {
             cJSON_AddStringToObject(root, "r9", tmp);
             snprintf(tmp, sizeof(tmp), "0x%llx", (unsigned long long)rbp);
             cJSON_AddStringToObject(root, "rbp", tmp);
-            fprintf(stderr, "[.] key response +ctx template (adamId=%s)\n", adamId);
+            DRM_DEBUG("[.] key response +ctx template (adamId=%s)\n", adamId);
         }
     }
     char *json_body = cJSON_PrintUnformatted(root);
@@ -1440,7 +1489,7 @@ void handle_key_request(const int connfd) {
     if (!http_response) { free(json_body); free(contentKey); free(adamId); free(uri); return; }
     snprintf(http_response, 1024, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: %zu\r\nConnection: close\r\n\r\n",
              strlen(json_body));
-    fprintf(stderr, "[.] key response: adamId=%s contentKey len=%zu body=%zu\n", adamId, strlen(contentKey), strlen(json_body));
+    DRM_DEBUG("[.] key response: adamId=%s contentKey len=%zu body=%zu\n", adamId, strlen(contentKey), strlen(json_body));
     writefull(connfd, http_response, strlen(http_response));
     writefull(connfd, json_body, strlen(json_body));
 
@@ -1525,7 +1574,7 @@ void handle_account(const int connfd)
     snprintf(http_response, response_size, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: %d\r\nConnection: close\r\n\r\n",
              json_len);
 
-    fprintf(stderr, "[.] returning account info, storefront: %s\n", g_storefront_id);
+    DRM_DEBUG("[.] returning account info, storefront: %s\n", g_storefront_id);
     writefull(connfd, http_response, strlen(http_response));
     writefull(connfd, json_body, json_len);
 
@@ -1569,7 +1618,7 @@ void handle_progressive_mv(const int connfd)
             pthread_mutex_unlock(&g_itun_mutex);
 
             const char *itun_flag = has_itun ? "ITUN" : "";
-            fprintf(stderr, "[.] mv progressive adamId: %ld, url: %.80s..., key: %s, itun: %s\n",
+            DRM_DEBUG("[.] mv progressive adamId: %ld, url: %.80s..., key: %s, itun: %s\n",
                     adamID, url, dk ? dk : "(none)", has_itun ? "yes" : "no");
 
             /* protocol: URL\n KEY\n ITUN_FLAG\n */
@@ -1655,7 +1704,7 @@ void handle_itun_decrypt(const int connfd) {
             return;
         }
 
-        fprintf(stderr, "[+] itun: decrypting samples for adamId %lu\n", adamID);
+        DRM_DEBUG("[+] itun: decrypting samples for adamId %lu\n", adamID);
 
         while (1) {
             uint32_t size;
@@ -1788,14 +1837,14 @@ char* get_account_storefront_id(struct shared_ptr reqCtx) {
 
 void write_storefront_id(void) {
     FILE *fp = fopen(strcat_b(args_info.base_dir_arg, "/STOREFRONT_ID"), "w");
-    fprintf(stderr, "[+] StoreFront ID: %s\n", g_storefront_id);
+    DRM_DEBUG("[+] StoreFront ID: %s\n", g_storefront_id);
     fprintf(fp, "%s", g_storefront_id);
     fclose(fp);
 }
 
 char *get_guid() {
     char *ret[2];
-    _ZN17storeservicescore10DeviceGUID4guidEv(ret, GUID.obj);
+    _ZN17storeservicescore10DeviceGUID4guidEv(ret, g_GUID.obj);
     char *raw = _ZNK13mediaplatform4Data5bytesEv(ret[0]);
     size_t len = _ZNK13mediaplatform4Data6lengthEv(ret[0]);
     /* Data::bytes() is NOT null-terminated — copy to a null-terminated buffer */
@@ -1921,41 +1970,38 @@ char* get_dev_token(struct shared_ptr reqCtx) {
 }
 
 void write_music_token(void) {
-    int token_file_available = 0;
-    if (file_exists(strcat_b(args_info.base_dir_arg, "/MUSIC_TOKEN"))) {
-        FILE *fp = fopen(strcat_b(args_info.base_dir_arg, "/MUSIC_TOKEN"), "r");
-        if (NULL != fp) {
-            fseek (fp, 0, SEEK_END);
-            long size = ftell(fp);
-
-            if (0 != size) {
-                token_file_available = 1;
-            }
-        }
-    }
-    if (token_file_available) {
-        char token[256];
-        FILE *fp = fopen(strcat_b(args_info.base_dir_arg, "/MUSIC_TOKEN"), "r");
-        fgets(token, sizeof(token), fp);
-        fprintf(stderr, "[+] Music-Token: %.14s...\n", token);
-        return;
-    }
+    if (!g_music_token || !g_music_token[0]) return;
     FILE *fp = fopen(strcat_b(args_info.base_dir_arg, "/MUSIC_TOKEN"), "w");
-    fprintf(stderr, "[+] Music-Token: %.14s...\n", g_music_token);
+    if (!fp) { perror("[!] write_music_token: fopen"); return; }
+    DRM_DEBUG("[+] Music-Token: %.14s...\n", g_music_token);
     fprintf(fp, "%s", g_music_token);
     fclose(fp);
 }
 
 int offline_available() {
     struct shared_ptr *fairplay = malloc(16);
+    if (!fairplay) return 0;
+    memset(fairplay, 0, 16);
     _ZN17storeservicescore14RequestContext8fairPlayEv(fairplay, reqCtx.obj);
+    if (!fairplay->obj) {
+        /* Account may lack a FairPlay subscription object — treat as offline-unavailable. */
+        fprintf(stderr, "[drm] offline_available: FairPlay obj is null\n"); fflush(stderr);
+        free(fairplay);
+        return 0;
+    }
     struct std_vector fairplay_status = _ZN17storeservicescore8FairPlay21getSubscriptionStatusEv(fairplay->obj);
     char *begin_ptr = (char*)fairplay_status.begin;
+    if (!begin_ptr) {
+        fprintf(stderr, "[drm] offline_available: subscription status vector is empty\n"); fflush(stderr);
+        free(fairplay);
+        return 0;
+    }
     char *second_item_ptr = begin_ptr + 16;
     int state = *(int*)((char*)second_item_ptr + 8);
+    free(fairplay);
     if (state == 2 || state == 3) { // kFPSubscriptionCanPlayContent, kFPSubscriptionCanStreamAndPlayContent
         return 1;
-    } 
+    }
     return 0;
 }
 
@@ -2007,7 +2053,7 @@ int main(int argc, char *argv[]) {
     offlineFlag = offline_available();
     fprintf(stderr, "[main-cp11] offline_available returned %d\n", offlineFlag); fflush(stderr);
     if (offlineFlag) {
-        fprintf(stderr, "[+] This account supports offline channel\n");
+        DRM_DEBUG("[+] This account supports offline channel\n");
     }
 
     // Cache account info
@@ -2047,7 +2093,7 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    fprintf(stderr, "[+] account info cached successfully\n");
+    DRM_DEBUG("[+] account info cached successfully\n");
 
     write_storefront_id();
     write_music_token();

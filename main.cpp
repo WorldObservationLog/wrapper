@@ -229,7 +229,6 @@ static void recovery_worker()
 extern "C" void start_recovery_thread(void)
 {
     std::thread(recovery_worker).detach();
-    fprintf(stderr, "[+] recovery thread started\n");
 }
 
 // ---------------------------------------------------------------------------

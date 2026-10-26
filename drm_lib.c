@@ -18,6 +18,15 @@
 #include "drm_lib.h"
 #include "cmdline.h"
 
+#ifdef _WIN32
+static int drm_windows_setenv(const char *name, const char *value, int overwrite)
+{
+    if (!overwrite && getenv(name) != NULL) return 0;
+    return _putenv_s(name, value != NULL ? value : "");
+}
+#define setenv drm_windows_setenv
+#endif
+
 /* ── Externs from hybris_stubs.c ────────────────────────────────────────────*/
 
 extern uint8_t endLeaseCallback[32];
@@ -35,6 +44,7 @@ extern uint8_t           leaseMgr[16];
 extern struct shared_ptr reqCtx;
 extern struct gengetopt_args_info args_info;
 extern char             *amUsername, *amPassword;
+extern size_t            amPasswordLen;
 extern int               decryptCount;
 extern int               offlineFlag;
 extern char             *device_infos[9];
@@ -141,6 +151,7 @@ int drm_lib_init(const drm_lib_config_t *cfg)
         strncpy(pw_buf, cfg->password, sizeof(pw_buf) - 1);
         pw_buf[sizeof(pw_buf) - 1] = '\0';
         amPassword = pw_buf;
+        amPasswordLen = strlen(pw_buf);
         args_info.login_arg = NULL; /* not used in library mode */
         args_info.login_given = 0;
     }
@@ -172,20 +183,24 @@ int drm_lib_init(const drm_lib_config_t *cfg)
     }
 
     /* Lease */
+    DRM_DEBUG("[drm_lib] lease ctor\n");
     _ZN22SVPlaybackLeaseManagerC2ERKNSt6__ndk18functionIFvRKiEEERKNS1_IFvRKNS0_10shared_ptrIN17storeservicescore19StoreErrorConditionEEEEEE(
         leaseMgr, &endLeaseCallback, &pbErrCallback);
     uint8_t autom = 1;
+    DRM_DEBUG("[drm_lib] refreshLeaseAutomatically\n");
     _ZN22SVPlaybackLeaseManager25refreshLeaseAutomaticallyERKb(leaseMgr, &autom);
+    DRM_DEBUG("[drm_lib] requestLease\n");
     _ZN22SVPlaybackLeaseManager12requestLeaseERKb(leaseMgr, &autom);
+    DRM_DEBUG("[drm_lib] requestLease returned\n");
 
-    fprintf(stderr, "[drm_lib] FHinstance\n"); fflush(stderr);
+    DRM_DEBUG("[drm_lib] FHinstance\n");
     FHinstance = _ZN21SVFootHillSessionCtrl8instanceEv();
-    fprintf(stderr, "[drm_lib] start_recovery_thread\n"); fflush(stderr);
+    DRM_DEBUG("[drm_lib] start_recovery_thread\n");
     start_recovery_thread();
-    fprintf(stderr, "[drm_lib] offline_available\n"); fflush(stderr);
+    DRM_DEBUG("[drm_lib] offline_available\n");
 
     offlineFlag = offline_available();
-    fprintf(stderr, "[drm_lib] offline=%d, get_storefront_id\n", offlineFlag); fflush(stderr);
+    DRM_DEBUG("[drm_lib] offline=%d, get_storefront_id\n", offlineFlag);
 
     /* Cache account tokens */
     g_storefront_id = get_account_storefront_id(reqCtx);
@@ -195,7 +210,7 @@ int drm_lib_init(const drm_lib_config_t *cfg)
         pthread_mutex_unlock(&g_init_mutex);
         return -1;
     }
-    fprintf(stderr, "[drm_lib] storefront_id=%s, get_dev_token\n", g_storefront_id); fflush(stderr);
+    DRM_DEBUG("[drm_lib] storefront_id=%s, get_dev_token\n", g_storefront_id);
     g_dev_token = get_dev_token(reqCtx);
     if (!g_dev_token) {
         fprintf(stderr, "[drm_lib] failed to get dev token\n");
@@ -203,29 +218,70 @@ int drm_lib_init(const drm_lib_config_t *cfg)
         pthread_mutex_unlock(&g_init_mutex);
         return -1;
     }
-    fprintf(stderr, "[drm_lib] dev_token ok, get_music_token\n"); fflush(stderr);
+    DRM_DEBUG("[drm_lib] dev_token ok, get_music_token\n");
     g_music_token = get_music_user_token(get_guid(), g_dev_token, reqCtx);
+    if (!g_music_token && cfg->base_dir) {
+        /* createMusicToken failed (session may be expired) — fall back to the
+         * MUSIC_TOKEN stored in drm/files/ by the web-session path. */
+        char tok_path[1024];
+        snprintf(tok_path, sizeof(tok_path), "%s/MUSIC_TOKEN", cfg->base_dir);
+        FILE *tf = fopen(tok_path, "r");
+        if (tf) {
+            char buf[8192];
+            size_t n = fread(buf, 1, sizeof(buf) - 1, tf);
+            fclose(tf);
+            buf[n] = '\0';
+            while (n > 0 && (buf[n-1] == '\n' || buf[n-1] == '\r' || buf[n-1] == ' ')) buf[--n] = '\0';
+            if (n > 0) {
+                g_music_token = strdup(buf);
+                DRM_DEBUG("[drm_lib] music_token: using stored token from disk (%zu bytes)\n", n);
+            }
+        }
+    }
     if (!g_music_token) {
         fprintf(stderr, "[drm_lib] failed to get music token\n");
         g_init_result = -1;
         pthread_mutex_unlock(&g_init_mutex);
         return -1;
     }
-    fprintf(stderr, "[drm_lib] music_token ok\n"); fflush(stderr);
+    DRM_DEBUG("[drm_lib] music_token ok\n");
 
     if (cfg->base_dir) {
-        fprintf(stderr, "[drm_lib] write_storefront_id\n"); fflush(stderr);
+        DRM_DEBUG("[drm_lib] write_storefront_id\n");
         write_storefront_id();
-        fprintf(stderr, "[drm_lib] write_music_token\n"); fflush(stderr);
+        DRM_DEBUG("[drm_lib] write_music_token\n");
         write_music_token();
     }
-    fprintf(stderr, "[drm_lib] calling state_cb RUNNING\n"); fflush(stderr);
+    DRM_DEBUG("[drm_lib] calling state_cb RUNNING\n");
 
     if (g_drm_state_cb)
         g_drm_state_cb("RUNNING", g_drm_state_ud);
 
     g_init_result = 0;
     pthread_mutex_unlock(&g_init_mutex);
+    return 0;
+}
+
+/* ── drm_lib_login ──────────────────────────────────────────────────────────*/
+
+int drm_lib_login(const char *username, const char *password)
+{
+    if (!username || !password) return -1;
+
+    extern char *amUsername, *amPassword;
+    amUsername = (char *)username;
+    static char pw_buf[256];
+    strncpy(pw_buf, password, sizeof(pw_buf) - 1);
+    pw_buf[sizeof(pw_buf) - 1] = '\0';
+    amPassword = pw_buf;
+    amPasswordLen = strlen(pw_buf);
+
+    extern uint8_t login(struct shared_ptr ctx);
+    if (!login(reqCtx)) {
+        fprintf(stderr, "[drm_lib] login failed\n");
+        return -1;
+    }
+    DRM_DEBUG("[drm_lib] login ok\n");
     return 0;
 }
 
@@ -358,4 +414,13 @@ int drm_lib_is_recovery_active(void)
 {
     extern int is_recovery_active(void);
     return is_recovery_active();
+}
+
+/* ── drm_lib_debug_enabled ──────────────────────────────────────────────────*/
+
+int drm_lib_debug_enabled(void)
+{
+    static int cached = -1;
+    if (cached < 0) cached = getenv("ADAM_DRM_DEBUG") != NULL;
+    return cached;
 }

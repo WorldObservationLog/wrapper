@@ -267,7 +267,7 @@ extern int __android_log_write(int prio, const char *tag, const char *text);
 extern void *_ZTVNSt6__ndk120__shared_ptr_emplaceIN13mediaplatform11HTTPMessageENS_9allocatorIS2_EEEE;
 extern void *_ZN13mediaplatform11HTTPMessageC2ENSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEES7_(void *,  union std_string *, union std_string *);
 extern void _ZN13mediaplatform11HTTPMessage9setHeaderERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEES9_(void *, union std_string *, union std_string *);
-extern void _ZN13mediaplatform11HTTPMessage11setBodyDataEPcm(void *,char *, u_long);
+extern void _ZN13mediaplatform11HTTPMessage11setBodyDataEPcm(void *,char *, unsigned long);
 extern void *_ZN17storeservicescore10DeviceGUID4guidEv(void *, void *);
 extern char *_ZNK13mediaplatform4Data5bytesEv(void *);
 extern size_t _ZNK13mediaplatform4Data6lengthEv(void *);
