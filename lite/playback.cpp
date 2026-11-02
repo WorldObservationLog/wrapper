@@ -153,7 +153,8 @@ static void setup_r1_hook(void) {
 }
 
 static void* preshareCtx = nullptr;
-static void* getKdContext(const std::string& adam, const std::string& uri) {
+static struct shared_ptr preshareOwner = {.obj = nullptr, .ctrl_blk = nullptr};
+static void* getKdContext(const std::string& adam, const std::string& uri, struct shared_ptr* owner) {
     uint8_t isPreshare = (adam == "0");
     if (isPreshare && preshareCtx) return preshareCtx;
     LOG_INFO("adamId: %s, uri: %s", adam.c_str(), uri.c_str());
@@ -178,16 +179,35 @@ static void* getKdContext(const std::string& adam, const std::string& uri) {
     if (!SVFootHillPContext.obj) return nullptr;
 
     void* kdContext = *_ZNK18SVFootHillPContext9kdContextEv(SVFootHillPContext.obj);
-    if (kdContext && isPreshare) preshareCtx = kdContext;
+    if (kdContext && isPreshare) {
+        preshareCtx = kdContext;
+        preshareOwner = SVFootHillPContext;
+    } else {
+        *owner = SVFootHillPContext;
+    }
     return kdContext;
+}
+
+/* Every decryptContext() result is held twice: by the shared_ptr it returns
+   and by the session controller's persistent-key context map, which only
+   resetAllContexts() empties. Keeping either alive leaks the FairPlay context,
+   and after 1024 of them every /key fails with KDCanProcessCKC -42786. A
+   captured template is a copy, so drop both once it has been taken. */
+static void release_decrypt_ctxs(struct shared_ptr* owner) {
+    if (owner->obj) _ZNSt6__ndk110shared_ptrI18SVFootHillPContextED2Ev(owner);
+    owner->obj = nullptr; owner->ctrl_blk = nullptr;
+    if (preshareOwner.obj) _ZNSt6__ndk110shared_ptrI18SVFootHillPContextED2Ev(&preshareOwner);
+    preshareOwner.obj = nullptr; preshareOwner.ctrl_blk = nullptr;
+    preshareCtx = nullptr;
+    _ZN21SVFootHillSessionCtrl16resetAllContextsEv(FHinstance);
 }
 
 static void refresh_decrypt_ctx() {
     uint8_t autom = 1;
     _ZN22SVPlaybackLeaseManager12requestLeaseERKb(leaseMgr, &autom);
-    _ZN21SVFootHillSessionCtrl16resetAllContextsEv(FHinstance);
-    preshareCtx = nullptr;
-    preshareCtx = getKdContext("0", "skd://itunes.apple.com/P000000000/s1/e1");
+    struct shared_ptr none = {.obj = nullptr, .ctrl_blk = nullptr};
+    release_decrypt_ctxs(&none);
+    preshareCtx = getKdContext("0", "skd://itunes.apple.com/P000000000/s1/e1", &none);
     LOG_WARN("refreshed context");
 }
 
@@ -196,16 +216,18 @@ static int capture_content_template(const std::string& adam, const std::string& 
                                      uint64_t* rcx, uint64_t* rax, uint64_t* rdx,
                                      uint64_t* r9, uint64_t* rbp, int with_refresh) {
     if (with_refresh) refresh_decrypt_ctx();
-    void* kdPtr = (void*)getKdContext(adam, uri);
-    if (!kdPtr || !*(void**)kdPtr) { LOG_WARN("getKdContext failed"); return -1; }
+    struct shared_ptr owner = {.obj = nullptr, .ctrl_blk = nullptr};
+    void* kdPtr = (void*)getKdContext(adam, uri, &owner);
+    if (!kdPtr || !*(void**)kdPtr) { LOG_WARN("getKdContext failed"); release_decrypt_ctxs(&owner); return -1; }
     void* kd = *(void**)kdPtr;
     setup_r1_hook();
-    if (!g_r1_hooked) return -1;
+    if (!g_r1_hooked) { release_decrypt_ctxs(&owner); return -1; }
     g_cap_armed = 1;
     g_cap_done = 0;
     uint8_t dummy[64] = {0};
     NfcRKVnxuKZy04KWbdFu71Ou(kd, 5, dummy, dummy, 64);
     g_cap_armed = 0;
+    release_decrypt_ctxs(&owner);
     if (!g_cap_done) { LOG_WARN("R1 capture triggered but no data"); return -1; }
     memcpy(cap_ctx, g_cap_ctx, 0x8000);
     memcpy(cap_state, g_cap_state, 0x2100);
