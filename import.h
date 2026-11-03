@@ -246,6 +246,7 @@ IMPORT_EXTERN void
 _ZN21SVFootHillSessionCtrl14decryptContextERKNSt6__ndk112basic_stringIcNS0_11char_traitsIcEENS0_9allocatorIcEEEERKN11SVDecryptor15SVDecryptorTypeERKb(
 	struct shared_ptr *ret, void *sessCtrlInstance, union std_string *ckc);
 IMPORT_EXTERN void _ZNSt6__ndk110shared_ptrI18SVFootHillPContextED2Ev(struct shared_ptr *);
+IMPORT_EXTERN void _ZNSt6__ndk119__shared_weak_count16__release_sharedEv(void *);
 IMPORT_EXTERN void **_ZNK18SVFootHillPContext9kdContextEv(void *);
 IMPORT_EXTERN long NfcRKVnxuKZy04KWbdFu71Ou(void *, uint32_t, void *, void *, size_t);
 
