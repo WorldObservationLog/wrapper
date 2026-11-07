@@ -159,6 +159,7 @@ int main(int argc, char *argv[], char *envp[]) {
         return 1;
     }
 
+    chmod("/system/bin/linker64", 0755);
     chmod(exec_path, 0755);
 
     if (mkdir(base_dir_for_mkdir, 0777) != 0 && errno != EEXIST) {
