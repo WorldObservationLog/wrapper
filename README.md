@@ -139,6 +139,7 @@ All responses use:
 | `--base-dir` | `data` | data directory |
 | `--dns` | auto | comma-separated resolvers for the Android layer; falls back to `/etc/resolv.conf`, then the built-in `8.8.8.8,8.8.4.4` |
 | `--ca-bundle` | `/system/etc/security/cacert.pem` | CA bundle used while TLS verification is on |
+| `--tls` | `auto` | TLS version for the API requests and the Apple libraries: `auto` tries TLS 1.3 first and retries with the default handshake if 1.3 is refused, `1.3` forces 1.3, `default` keeps libcurl's choice |
 | `--device-info` | auto | override the entire device-info string (see [Device info](#device-info)) |
 | `--proxy` | — | proxy URL |
 | `--debug` | off | debug logging; disables TLS verification |

@@ -33,6 +33,7 @@ bool g_ssl_verify_disabled = false;
 #else
 bool g_ssl_verify_disabled = true;
 #endif
+int g_tls_mode = TLS_MODE_AUTO;
 bool g_code_from_file = false;
 
 extern const char* const fairplayCert;
@@ -212,6 +213,7 @@ static int (*orig_debug_log_enabled)(void);
 static int (*orig_log_print)(int prio, const char *tag, const char *fmt, ...);
 static int (*orig_log_write)(int prio, const char *tag, const char *text);
 static int (*orig_curl_easy_setopt)(void *curl, int32_t option, ...);
+static int (*orig_curl_easy_perform)(void *curl);
 
 static uint8_t allDebug() { return 1; }
 
@@ -237,12 +239,35 @@ int curl_easy_setopt_hook(void *curl, int32_t option, ...) {
     va_start(args, option);
     void* param = va_arg(args, void*);
     va_end(args);
+    /* Some networks reset the default TLS handshake while TLS 1.3 passes,
+       so pin every transfer started by the Apple libraries to 1.3 as well
+       (CURLOPT_URL marks a new transfer; an explicit SSLVERSION is
+       overridden).  --tls default leaves the version untouched. */
+    if (g_tls_mode != TLS_MODE_DEFAULT) {
+        if (option == 10002) {
+            orig_curl_easy_setopt(curl, 32, CURL_SSLVERSION_TLSv1_3);
+        } else if (option == 32) {
+            return orig_curl_easy_setopt(curl, 32, CURL_SSLVERSION_TLSv1_3);
+        }
+    }
     if (g_ssl_verify_disabled && (option == 64 || option == 81 || option == 10230)) {
         LOG_DEBUG("hooked curl_easy_setopt %d (SSL verify disabled)", option);
         orig_curl_easy_setopt(curl, 43, 1L);
         return orig_curl_easy_setopt(curl, option, 0L);
     }
     return orig_curl_easy_setopt(curl, option, param);
+}
+
+/* TLS 1.3 is requested first; when the handshake is reset, retry the same
+ * transfer once with the library default.  The failure happens before any
+ * request bytes are written, so repeating it is safe. */
+int curl_easy_perform_hook(void *curl) {
+    int rc = orig_curl_easy_perform(curl);
+    if (rc != CURL_SSL_CONNECT_ERROR || g_tls_mode != TLS_MODE_AUTO) return rc;
+    orig_curl_easy_setopt(curl, 32, CURL_SSLVERSION_DEFAULT);
+    rc = orig_curl_easy_perform(curl);
+    if (rc == 0) LOG_DEBUG("tls: retried the transfer with the default handshake");
+    return rc;
 }
 
 void install_hooks() {
@@ -253,9 +278,8 @@ void install_hooks() {
               (void*)&allDebug, (void**)&orig_debug_log_enabled);
     DobbyHook((void*)&__android_log_print, (void*)&log_print_hook, (void**)&orig_log_print);
     DobbyHook((void*)&__android_log_write, (void*)&log_write_hook, (void**)&orig_log_write);
-    if (g_ssl_verify_disabled) {
-        DobbyHook((void*)&curl_easy_setopt, (void*)&curl_easy_setopt_hook, (void**)&orig_curl_easy_setopt);
-    }
+    DobbyHook((void*)&curl_easy_setopt, (void*)&curl_easy_setopt_hook, (void**)&orig_curl_easy_setopt);
+    DobbyHook((void*)&curl_easy_perform, (void*)&curl_easy_perform_hook, (void**)&orig_curl_easy_perform);
     LOG_DEBUG("debug hooks installed");
 }
 

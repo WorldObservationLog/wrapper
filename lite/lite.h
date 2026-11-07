@@ -41,6 +41,7 @@ struct CurlEasy {
     bool setOptInt(int opt, int val);
     bool setOptPtr(int opt, void* ptr);
     bool setOptStr(int opt, const char* str);
+    bool setOptLong(int opt, long val);
     bool perform();
     long getResponseCode();
 };
@@ -60,7 +61,18 @@ constexpr int CURLOPT_SSL_VERIFYHOST = 81;
 constexpr int CURLOPT_FOLLOWLOCATION = 52;
 constexpr int CURLOPT_ACCEPT_ENCODING = 10102;
 constexpr int CURLOPT_CAINFO      = 10065;
-constexpr int CURLINFO_RESPONSE_CODE = 0x2000002;
+constexpr int CURLOPT_SSLVERSION = 32;
+constexpr int CURL_SSL_CONNECT_ERROR = 35;
+
+/* TLS handling for the dlopen'd libcurl: prefer 1.3 and fall back to the
+   library default, force 1.3 only, or leave the version alone. */
+extern int g_tls_mode;
+constexpr int TLS_MODE_AUTO    = 0;
+constexpr int TLS_MODE_13      = 1;
+constexpr int TLS_MODE_DEFAULT = 2;
+constexpr long CURL_SSLVERSION_DEFAULT = 0;
+constexpr long CURL_SSLVERSION_TLSv1_3 = 7;
+constexpr int CURLINFO_RESPONSE_CODE = 0x200002;
 
 struct CurlSlist {
     void* list;
