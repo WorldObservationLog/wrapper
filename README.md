@@ -118,9 +118,11 @@ All responses use:
 | `--host` | `127.0.0.1` | listen address |
 | `--port` | `12340` | listen port |
 | `--base-dir` | `data` | data directory |
+| `--dns` | auto | comma-separated resolvers for the Android layer; falls back to `/etc/resolv.conf`, then the built-in `8.8.8.8,8.8.4.4` |
+| `--ca-bundle` | `/system/etc/security/cacert.pem` | CA bundle used while TLS verification is on |
 | `--device-info` | auto | override the entire device-info string (see [Device info](#device-info)) |
 | `--proxy` | — | proxy URL |
-| `--debug` | off | debug logging; disables SSL verify in Release |
+| `--debug` | off | debug logging; disables TLS verification |
 | `--log-level` | `info` | `debug`, `info`, `warn`, `error` |
 | `--log-file` | — | log file path |
 | `--token-refresh-interval` | `1800` | background refresh interval in seconds |
@@ -170,13 +172,28 @@ Environment variables (fallbacks; command-line flags take precedence):
 | `LITE_GUEST_HOST` | `0.0.0.0` | address the guest lite listens on |
 | `MEMORY` | `512` | guest memory in MB |
 | `SMP` | `2` | guest CPU count |
+| `LITE_DNS` | — | forwarded to the guest as `--dns` |
 | `LITE_QEMU_ACCEL` | auto | force acceleration |
 | `QEMU_BIN` | auto | QEMU binary path |
 
 ## Build notes
 
-- Release: SSL verification is enabled by default. Pass `--debug` to disable it temporarily.
-- Debug: SSL verification is disabled by default.
+- Release: TLS verification is on by default and uses the bundled Mozilla CA
+  bundle (`rootfs/system/etc/security/cacert.pem`, installed as
+  `/system/etc/security/cacert.pem`). Pass `--debug` to disable verification
+  temporarily, or `--ca-bundle` to use a different bundle.
+- Debug: TLS verification is disabled by default.
+- DNS: the Android layer uses `--dns` / `LITE_DNS` when given, otherwise the
+  host's `/etc/resolv.conf`; the built-in `8.8.8.8,8.8.4.4` is only a
+  last-resort fallback.
+
+## Security
+
+- TLS verification and the resolver defaults are described under
+  [Build notes](#build-notes).
+- The HTTP API has no authentication. It listens on `127.0.0.1` by default;
+  binding to `0.0.0.0` (as the Docker image does) exposes the logged-in
+  account to anyone who can reach the port.
 
 ## License
 

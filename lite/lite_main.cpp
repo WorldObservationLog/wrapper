@@ -50,6 +50,8 @@ static std::string g_log_level = "info";
 static std::string g_log_file;
 static int g_token_refresh_interval = 1800;
 static bool g_cors_enabled = false;
+static std::string g_dns_servers;
+static std::string g_ca_bundle;
 
 /* ---- Token state and background refresh ---- */
 static std::mutex g_tokens_mutex;
@@ -468,6 +470,7 @@ static void print_usage() {
     LOG_INFO("            [--device-info STR] [--base-dir data] [--proxy URL] [--debug]");
     LOG_INFO("            [--log-level debug|info|warn|error] [--log-file PATH]");
     LOG_INFO("            [--token-refresh-interval SECONDS] [--cors]");
+    LOG_INFO("            [--dns ip[,ip...]] [--ca-bundle PATH]");
 }
 
 static LogLevel parse_log_level(const std::string& s) {
@@ -521,6 +524,8 @@ int main(int argc, char* argv[]) {
         }
         else if (arg == "--device-info" && i + 1 < cmdline_args.size()) g_device_info_override = cmdline_args[++i];
         else if (arg == "--base-dir" && i + 1 < cmdline_args.size()) g_base_dir = cmdline_args[++i];
+        else if (arg == "--dns" && i + 1 < cmdline_args.size()) g_dns_servers = cmdline_args[++i];
+        else if (arg == "--ca-bundle" && i + 1 < cmdline_args.size()) g_ca_bundle = cmdline_args[++i];
         else if (arg == "--help" || arg == "-h") {
             print_usage();
             return 0;
@@ -532,9 +537,27 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    /* Environment fallbacks: command-line flags take precedence. */
+    if (g_dns_servers.empty()) {
+        const char* v = getenv("LITE_DNS");
+        if (v && *v) g_dns_servers = v;
+    }
+    if (g_ca_bundle.empty()) {
+        const char* v = getenv("LITE_CA_BUNDLE");
+        if (v && *v) g_ca_bundle = v;
+    }
+
     if (g_token_refresh_interval <= 0) g_token_refresh_interval = 1800;
     Logger::get().configure(parse_log_level(g_log_level), g_log_file, 5 * 1024 * 1024);
     set_base_dir(g_base_dir.c_str());
+    if (!g_dns_servers.empty()) set_dns_servers(g_dns_servers.c_str());
+    if (!g_ca_bundle.empty()) set_ca_bundle(g_ca_bundle.c_str());
+    if (!g_ssl_verify_disabled) {
+        FILE* ca = fopen(get_ca_bundle(), "r");
+        if (ca) fclose(ca);
+        else LOG_ERROR("TLS verification is enabled but the CA bundle %s is not readable;"
+                       " pass --ca-bundle <path> or run with --debug", get_ca_bundle());
+    }
     g_tokens.base_dir = g_base_dir;
 
     if (g_login_only) {

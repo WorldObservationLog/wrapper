@@ -59,6 +59,7 @@ constexpr int CURLOPT_SSL_VERIFYPEER = 64;
 constexpr int CURLOPT_SSL_VERIFYHOST = 81;
 constexpr int CURLOPT_FOLLOWLOCATION = 52;
 constexpr int CURLOPT_ACCEPT_ENCODING = 10102;
+constexpr int CURLOPT_CAINFO      = 10065;
 constexpr int CURLINFO_RESPONSE_CODE = 0x2000002;
 
 struct CurlSlist {
@@ -106,6 +107,11 @@ bool login(struct shared_ptr ctx);
 void set_device_info(const char* device_info);
 void set_base_dir(const char* dir);
 void set_credentials(const char* user, const char* pass);
+/* Resolver list for the Android layer: "ip[,ip...]" (--dns / LITE_DNS). */
+void set_dns_servers(const char* list);
+/* CA bundle used when TLS verification is enabled. */
+void set_ca_bundle(const char* path);
+const char* get_ca_bundle();
 /* Align original wrapper: offline accounts use download path, online use play path. */
 std::string get_m3u8(const std::string& adamId);
 std::string get_key(const std::string& adamId, const std::string& uri,

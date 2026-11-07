@@ -380,6 +380,20 @@ int main(int argc, char** argv) {
         }
     }
 
+    /* The guest only receives arguments (an args file plus the kernel cmdline),
+       so a host-side LITE_DNS has to be forwarded as --dns. */
+    const char* dnsEnv = std::getenv("LITE_DNS");
+    if (dnsEnv && *dnsEnv) {
+        bool hasDns = false;
+        for (size_t i = 0; i < liteArgs.size(); ++i) {
+            if (liteArgs[i] == "--dns") { hasDns = true; break; }
+        }
+        if (!hasDns) {
+            liteArgs.push_back("--dns");
+            liteArgs.push_back(dnsEnv);
+        }
+    }
+
     std::string dir = executableDir();
     if (dir.empty()) dir = ".";
     std::string assetDir = dir + "/qemu";

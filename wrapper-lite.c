@@ -30,6 +30,29 @@ static void intHan(int signum) {
     }
 }
 
+/* Give the Android layer the host's resolvers instead of a hardcoded one. */
+static void copy_resolv_conf(void) {
+    int in = open("/etc/resolv.conf", O_RDONLY);
+    if (in < 0) return;
+    if (mkdir("./rootfs/etc", 0755) != 0 && errno != EEXIST) {
+        perror("mkdir ./rootfs/etc failed");
+    }
+    int out = open("./rootfs/etc/resolv.conf", O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (out < 0) { close(in); return; }
+    char buf[4096];
+    ssize_t n;
+    while ((n = read(in, buf, sizeof(buf))) > 0) {
+        ssize_t off = 0;
+        while (off < n) {
+            ssize_t w = write(out, buf + off, (size_t)(n - off));
+            if (w <= 0) { close(in); close(out); return; }
+            off += w;
+        }
+    }
+    close(in);
+    close(out);
+}
+
 static int has_cap_sys_admin(void) {
     FILE *fp = fopen("/proc/self/status", "r");
     if (!fp) return 0;
@@ -77,6 +100,8 @@ int main(int argc, char *argv[], char *envp[]) {
         perror("mount /dev/urandom failed");
         return 1;
     }
+
+    copy_resolv_conf();
 
     if (chdir("./rootfs") != 0) {
         perror("chdir");

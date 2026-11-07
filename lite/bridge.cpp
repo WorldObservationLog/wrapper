@@ -24,6 +24,8 @@ char* amUsername = nullptr;
 char* amPassword = nullptr;
 char* device_infos[9];
 char g_base_dir[256] = "data";
+static char g_dns_servers[512] = "";
+static char g_ca_bundle[512] = "/system/etc/security/cacert.pem";
 int offlineFlag = 0;
 uint8_t leaseMgr[256];
 #ifdef LITE_RELEASE
@@ -55,6 +57,76 @@ static void split_string_safe(const char* input, const char* delim, char** out, 
     }
 }
 
+void set_dns_servers(const char* list) {
+    snprintf(g_dns_servers, sizeof(g_dns_servers), "%s", (list && *list) ? list : "");
+}
+
+void set_ca_bundle(const char* path) {
+    snprintf(g_ca_bundle, sizeof(g_ca_bundle), "%s",
+             (path && *path) ? path : "/system/etc/security/cacert.pem");
+}
+
+const char* get_ca_bundle() {
+    return g_ca_bundle;
+}
+
+/* Nameserver selection: an explicit list (--dns / LITE_DNS) wins, then the
+ * host's /etc/resolv.conf, then the built-in default kept for environments
+ * that ship no resolv.conf at all (the Android rootfs, old guest images). */
+static void split_nameservers(const std::string& s, std::vector<std::string>& out) {
+    std::string cur;
+    for (size_t i = 0; i <= s.size(); ++i) {
+        const char c = (i < s.size()) ? s[i] : ',';
+        if (c == ',' || c == ' ' || c == '\t' || c == ';' || c == '\n' || c == '\r') {
+            if (!cur.empty()) { out.push_back(cur); cur.clear(); }
+        } else {
+            cur += c;
+        }
+    }
+}
+
+static void read_resolv_conf(std::vector<std::string>& out) {
+    FILE* f = fopen("/etc/resolv.conf", "r");
+    if (!f) return;
+    char line[512];
+    while (fgets(line, sizeof(line), f)) {
+        char* p = line;
+        while (*p == ' ' || *p == '\t') ++p;
+        if (strncmp(p, "nameserver", 10) != 0) continue;
+        p += 10;
+        while (*p == ' ' || *p == '\t') ++p;
+        char* e = p;
+        while (*e && *e != '\n' && *e != '\r' && *e != ' ' && *e != '\t' && *e != '#') ++e;
+        if (e > p) out.push_back(std::string(p, e - p));
+    }
+    fclose(f);
+}
+
+static void apply_nameservers() {
+    std::vector<std::string> servers;
+    const char* source = "argument";
+    if (g_dns_servers[0]) split_nameservers(g_dns_servers, servers);
+    if (servers.empty()) {
+        read_resolv_conf(servers);
+        source = "/etc/resolv.conf";
+    }
+    if (servers.empty()) {
+        servers.push_back("8.8.8.8");
+        servers.push_back("8.8.4.4");
+        source = "built-in default";
+    }
+    if (servers.size() > 8) servers.resize(8);
+    std::vector<const char*> ptrs;
+    for (size_t i = 0; i < servers.size(); ++i) ptrs.push_back(servers[i].c_str());
+    _resolv_set_nameservers_for_net(0, &ptrs[0], (int)ptrs.size(), ".");
+    std::string joined;
+    for (size_t i = 0; i < servers.size(); ++i) {
+        if (i) joined += ",";
+        joined += servers[i];
+    }
+    LOG_INFO("DNS resolvers: %s (from %s)", joined.c_str(), source);
+}
+
 void init(const char* device_info_str) {
     LOG_INFO("initializing...");
     static char* prev_copy = nullptr;
@@ -66,8 +138,7 @@ void init(const char* device_info_str) {
     setenv("ANDROID_DNS_MODE", "local", 1);
     setenv("ANDROID_DATA", "/data", 1);
     setenv("ANDROID_ROOT", "/system", 1);
-    static const char* resolvers[2] = {"223.5.5.5", "223.6.6.6"};
-    _resolv_set_nameservers_for_net(0, resolvers, 2, ".");
+    apply_nameservers();
 
     union std_string conf1 = new_std_string(device_infos[8] ? device_infos[8] : "");
     union std_string conf2 = new_std_string("");

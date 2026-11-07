@@ -119,6 +119,22 @@ static size_t writeCallback(char* data, size_t size, size_t nmemb, void* userp) 
     return total;
 }
 
+/* TLS verification is on unless --debug (or a Debug build) turned it off.
+ * The Android rootfs ships no CA store, so curl is pointed at the bundled
+ * Mozilla bundle (rootfs/system/etc/security/cacert.pem, installed as
+ * /system/etc/security/cacert.pem). Override it with --ca-bundle. */
+static void apply_tls(CurlEasy& curl) {
+    if (g_ssl_verify_disabled) {
+        curl.setOptInt(CURLOPT_SSL_VERIFYPEER, 0);
+        curl.setOptInt(CURLOPT_SSL_VERIFYHOST, 0);
+        return;
+    }
+    curl.setOptInt(CURLOPT_SSL_VERIFYPEER, 1);
+    curl.setOptInt(CURLOPT_SSL_VERIFYHOST, 2);
+    const char* bundle = get_ca_bundle();
+    if (bundle && *bundle) curl.setOptStr(CURLOPT_CAINFO, bundle);
+}
+
 /* ---- Token management (base_dir-aware, atomic writes) ---- */
 void TokenCache::load() {
     std::string path = (base_dir.empty() ? "data" : base_dir) + "/token_cache.json";
@@ -184,8 +200,7 @@ std::string AppleApi::getDevToken() {
     curl.setOptStr(CURLOPT_URL, "https://music.apple.com");
     curl.setOptPtr(CURLOPT_WRITEFUNCTION, (void*)&writeCallback);
     curl.setOptPtr(CURLOPT_WRITEDATA, &html);
-    curl.setOptInt(CURLOPT_SSL_VERIFYPEER, 0);
-    curl.setOptInt(CURLOPT_SSL_VERIFYHOST, 0);
+    apply_tls(curl);
     curl.setOptInt(CURLOPT_FOLLOWLOCATION, 1);
     curl.setOptInt(CURLOPT_TIMEOUT_MS, 15000);
     curl.setOptStr(CURLOPT_USERAGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
@@ -205,8 +220,7 @@ std::string AppleApi::getDevToken() {
     jsCurl.setOptStr(CURLOPT_URL, ("https://music.apple.com" + jsPath).c_str());
     jsCurl.setOptPtr(CURLOPT_WRITEFUNCTION, (void*)&writeCallback);
     jsCurl.setOptPtr(CURLOPT_WRITEDATA, &js);
-    jsCurl.setOptInt(CURLOPT_SSL_VERIFYPEER, 0);
-    jsCurl.setOptInt(CURLOPT_SSL_VERIFYHOST, 0);
+    apply_tls(jsCurl);
     jsCurl.setOptInt(CURLOPT_FOLLOWLOCATION, 1);
     jsCurl.setOptInt(CURLOPT_TIMEOUT_MS, 15000);
     jsCurl.setOptStr(CURLOPT_ACCEPT_ENCODING, "");
@@ -306,8 +320,7 @@ std::string AppleApi::getLyrics(const std::string& adamId,
     curl.setOptStr(CURLOPT_URL, url.c_str());
     curl.setOptPtr(CURLOPT_WRITEFUNCTION, (void*)&writeCallback);
     curl.setOptPtr(CURLOPT_WRITEDATA, &resp);
-    curl.setOptInt(CURLOPT_SSL_VERIFYPEER, 0);
-    curl.setOptInt(CURLOPT_SSL_VERIFYHOST, 0);
+    apply_tls(curl);
     curl.setOptInt(CURLOPT_TIMEOUT_MS, 15000);
     curl.setOptStr(CURLOPT_USERAGENT, "Music/5.7 Android/10 model/Pixel6GR1YH build/1234 (dt:66)");
 
@@ -375,8 +388,7 @@ std::string AppleApi::getWebPlayback(const std::string& adamId,
     curl.setOptStr(CURLOPT_URL, "https://play.music.apple.com/WebObjects/MZPlay.woa/wa/webPlayback");
     curl.setOptPtr(CURLOPT_WRITEFUNCTION, (void*)&writeCallback);
     curl.setOptPtr(CURLOPT_WRITEDATA, &resp);
-    curl.setOptInt(CURLOPT_SSL_VERIFYPEER, 0);
-    curl.setOptInt(CURLOPT_SSL_VERIFYHOST, 0);
+    apply_tls(curl);
     curl.setOptInt(CURLOPT_TIMEOUT_MS, 15000);
     curl.setOptStr(CURLOPT_POSTFIELDS, postBody.c_str());
     curl.setOptInt(CURLOPT_POST, 1);
@@ -476,8 +488,7 @@ bool AppleApi::getLicense(const std::string& adamId,
     curl.setOptStr(CURLOPT_URL, "https://play.itunes.apple.com/WebObjects/MZPlay.woa/wa/acquireWebPlaybackLicense");
     curl.setOptPtr(CURLOPT_WRITEFUNCTION, (void*)&writeCallback);
     curl.setOptPtr(CURLOPT_WRITEDATA, &resp);
-    curl.setOptInt(CURLOPT_SSL_VERIFYPEER, 0);
-    curl.setOptInt(CURLOPT_SSL_VERIFYHOST, 0);
+    apply_tls(curl);
     curl.setOptInt(CURLOPT_TIMEOUT_MS, 15000);
     curl.setOptStr(CURLOPT_POSTFIELDS, postBody.c_str());
     curl.setOptInt(CURLOPT_POST, 1);

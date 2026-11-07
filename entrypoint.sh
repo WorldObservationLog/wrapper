@@ -11,6 +11,13 @@ if [ "$(stat -c %U "/app/rootfs/data")" != "root" ] || [ "$(stat -c %G "/app/roo
   chown -R root:root "/app/rootfs/data"
 fi
 
+# Let the Android layer resolve through the container's DNS instead of a
+# hardcoded public resolver.
+mkdir -p /app/rootfs/etc
+if [ -s /etc/resolv.conf ]; then
+  cp /etc/resolv.conf /app/rootfs/etc/resolv.conf
+fi
+
 if [ ! -f "$TOKEN_DB_PATH" ]; then
   echo "Login required: account database not found."
   if [ -z "${USERNAME}" ] || [ -z "${PASSWORD}" ]; then

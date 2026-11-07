@@ -14,6 +14,11 @@
 /bin/busybox ip addr add 10.0.2.15/24 dev eth0 2>/dev/null || true
 /bin/busybox ip route add default via 10.0.2.2 dev eth0 2>/dev/null || true
 
+# Slirp answers DNS at 10.0.2.3 and forwards it to the host's resolvers, so the
+# Android layer does not need a hardcoded public resolver.
+/bin/busybox mkdir -p /etc
+/bin/busybox echo "nameserver 10.0.2.3" > /etc/resolv.conf
+
 # Data disk (virtio-blk over PCI + ext4)
 /bin/busybox insmod /virtio.ko 2>/dev/null || true
 /bin/busybox insmod /virtio_ring.ko 2>/dev/null || true

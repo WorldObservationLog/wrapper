@@ -70,6 +70,7 @@ Windows WHPX uses:
 | `GUEST_PORT` | `12340` | guest port |
 | `MEMORY` | `512` | guest memory in MB |
 | `SMP` | `2` | guest CPU count |
+| `LITE_DNS` | — | forwarded to the guest as `--dns` (the guest itself defaults to slirp DNS at `10.0.2.3`) |
 | `LITE_QEMU_ACCEL` | auto | force acceleration |
 | `QEMU_BIN` | auto | QEMU binary path |
 
