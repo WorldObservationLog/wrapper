@@ -7,10 +7,44 @@
 #include <mutex>
 #include <dlfcn.h>
 #include <link.h>
+#include <new>
 
 extern const char* const fairplayCert;
 
+/* The library hands back owning objects whose template destructors are not
+ * exported: drop shared_ptr references through the base class entry point,
+ * and free strings / vector buffers explicitly. */
+static void release_shared(struct shared_ptr* p) {
+    if (p->ctrl_blk) _ZNSt6__ndk119__shared_weak_count16__release_sharedEv(p->ctrl_blk);
+    p->obj = nullptr;
+    p->ctrl_blk = nullptr;
+}
+
+static void release_string(union std_string* s) {
+    _ZNSt6__ndk112basic_stringIcNS_11char_traitsIcEENS_9allocatorIcEEED2Ev(s);
+}
+
+/* vector<shared_ptr<T>> returned by value: drop each element and free the
+ * buffer the library allocated with the libc++ allocator. */
+static void release_shared_vector(struct std_vector* v) {
+    if (!v->begin) return;
+    const size_t n = ((uint8_t*)v->end - (uint8_t*)v->begin) / sizeof(struct shared_ptr);
+    struct shared_ptr* p = (struct shared_ptr*)v->begin;
+    for (size_t i = 0; i < n; ++i) release_shared(&p[i]);
+    ::operator delete(v->begin);
+    v->begin = nullptr;
+    v->end = nullptr;
+    v->end_capacity = nullptr;
+}
+
 const char* get_m3u8_download(unsigned long adam) {
+    struct std_vector items;
+    struct std_vector assets;
+    union std_string url_str;
+    memset(&items, 0, sizeof(items));
+    memset(&assets, 0, sizeof(assets));
+    memset(&url_str, 0, sizeof(url_str));
+
     void* purchase_request = malloc(1024);
     memset(purchase_request, 0, 1024);
     _ZN17storeservicescore15PurchaseRequestC2ERKNSt6__ndk110shared_ptrINS_14RequestContextEEE(purchase_request, &g_reqCtx);
@@ -22,27 +56,33 @@ const char* get_m3u8_download(unsigned long adam) {
     union std_string bp = new_std_string(buyParams);
     _ZN17storeservicescore15PurchaseRequest16setBuyParametersERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(purchase_request, &bp);
     _ZN17storeservicescore15PurchaseRequest3runEv(purchase_request);
-    struct shared_ptr* response = _ZNK17storeservicescore15PurchaseRequest8responseEv(purchase_request);
-    if (!response) { free(purchase_request); return nullptr; }
-    struct shared_ptr* error = _ZN17storeservicescore16PurchaseResponse5errorEv(response->obj);
-    if (!error || error->obj) { free(purchase_request); return nullptr; }
 
-    struct std_vector items = _ZNK17storeservicescore16PurchaseResponse5itemsEv(response->obj);
-    if (!items.begin) { free(purchase_request); return nullptr; }
-    struct shared_ptr* firstItem = (struct shared_ptr*)items.begin;
-    struct std_vector assets = _ZNK17storeservicescore12PurchaseItem6assetsEv(firstItem->obj);
-    struct shared_ptr* lastAsset = (struct shared_ptr*)((uint8_t*)assets.end - sizeof(struct shared_ptr));
-    union std_string* url_str = (union std_string*)malloc(sizeof(union std_string));
-    memset(url_str, 0, sizeof(union std_string));
-    _ZNK17storeservicescore13PurchaseAsset3URLEv(url_str, lastAsset->obj);
-    const char* url = std_string_data(url_str);
-    if (url) {
-        char* result = strdup(url);
-        free(url_str); free(purchase_request);
-        return result;
+    char* result = nullptr;
+    struct shared_ptr* response = _ZNK17storeservicescore15PurchaseRequest8responseEv(purchase_request);
+    if (response && response->obj) {
+        struct shared_ptr* error = _ZN17storeservicescore16PurchaseResponse5errorEv(response->obj);
+        if (!error || !error->obj) {
+            items = _ZNK17storeservicescore16PurchaseResponse5itemsEv(response->obj);
+            if (items.begin && items.begin != items.end) {
+                struct shared_ptr* firstItem = (struct shared_ptr*)items.begin;
+                assets = _ZNK17storeservicescore12PurchaseItem6assetsEv(firstItem->obj);
+                if (assets.begin && assets.begin != assets.end) {
+                    struct shared_ptr* lastAsset =
+                        (struct shared_ptr*)((uint8_t*)assets.end - sizeof(struct shared_ptr));
+                    _ZNK17storeservicescore13PurchaseAsset3URLEv(&url_str, lastAsset->obj);
+                    const char* url = std_string_data(&url_str);
+                    if (url) result = strdup(url);
+                }
+            }
+        }
     }
-    free(url_str); free(purchase_request);
-    return nullptr;
+
+    release_string(&url_str);
+    release_shared_vector(&assets);
+    release_shared_vector(&items);
+    _ZN17storeservicescore15PurchaseRequestD2Ev(purchase_request);
+    free(purchase_request);
+    return result;
 }
 
 const char* get_m3u8_play(unsigned long adam) {
@@ -61,24 +101,20 @@ const char* get_m3u8_play(unsigned long adam) {
         &ptr_result, leaseMgr, &adam, &HLSParam, &z0);
     free(HLSParam.begin);
 
-    if (!ptr_result.obj) return nullptr;
-    if (!_ZNK23SVPlaybackAssetResponse13hasValidAssetEv(ptr_result.obj)) return nullptr;
-
-    struct shared_ptr* playbackAsset = _ZNK23SVPlaybackAssetResponse13playbackAssetEv(ptr_result.obj);
-    if (!playbackAsset || !playbackAsset->obj) return nullptr;
-
-    union std_string* m3u8 = (union std_string*)malloc(sizeof(union std_string));
-    memset(m3u8, 0, sizeof(union std_string));
-    _ZNK17storeservicescore13PlaybackAsset9URLStringEv(m3u8, (uint8_t*)playbackAsset->obj);
-
-    const char* m3u8_str = std_string_data(m3u8);
-    if (m3u8_str) {
-        char* result = strdup(m3u8_str);
-        free(m3u8);
-        return result;
+    union std_string m3u8;
+    memset(&m3u8, 0, sizeof(m3u8));
+    char* result = nullptr;
+    if (ptr_result.obj && _ZNK23SVPlaybackAssetResponse13hasValidAssetEv(ptr_result.obj)) {
+        struct shared_ptr* playbackAsset = _ZNK23SVPlaybackAssetResponse13playbackAssetEv(ptr_result.obj);
+        if (playbackAsset && playbackAsset->obj) {
+            _ZNK17storeservicescore13PlaybackAsset9URLStringEv(&m3u8, (uint8_t*)playbackAsset->obj);
+            const char* m3u8_str = std_string_data(&m3u8);
+            if (m3u8_str) result = strdup(m3u8_str);
+        }
     }
-    free(m3u8);
-    return nullptr;
+    release_string(&m3u8);
+    release_shared(&ptr_result);
+    return result;
 }
 
 /* getPersistentKey() returns an owning shared_ptr, and nothing in the library

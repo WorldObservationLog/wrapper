@@ -9,6 +9,7 @@
 #include <sys/time.h>
 #include <unistd.h>
 #include <sys/wait.h>
+#include <new>
 
 static std::string read_token_file(const std::string& path) {
     std::ifstream f(path);
@@ -34,11 +35,39 @@ long long getCurrentTimeMillis() {
     return tv.tv_sec * 1000LL + tv.tv_usec / 1000;
 }
 
+/* The library hands back owning objects whose template destructors are not
+ * exported: drop the reference through the shared_ptr base entry point and
+ * free strings / vector buffers explicitly. */
+static void release_shared(struct shared_ptr* p) {
+    if (p->ctrl_blk) _ZNSt6__ndk119__shared_weak_count16__release_sharedEv(p->ctrl_blk);
+    p->obj = nullptr;
+    p->ctrl_blk = nullptr;
+}
+
+static void release_string(union std_string* s) {
+    _ZNSt6__ndk112basic_stringIcNS_11char_traitsIcEENS_9allocatorIcEEED2Ev(s);
+}
+
+/* Releases a library-owned shared_ptr on scope exit. */
+struct shared_scope {
+    struct shared_ptr* p;
+    ~shared_scope() { release_shared(p); }
+};
+
+/* Destroys a URLRequest constructed in caller-provided storage; must run
+ * before the HTTPMessage it references is released. */
+struct url_request_scope {
+    void* obj;
+    ~url_request_scope() { if (obj) _ZN17storeservicescore10URLRequestD2Ev(obj); }
+};
+
 static char* get_guid() {
-    char* ret[2];
-    _ZN17storeservicescore10DeviceGUID4guidEv(ret, GUID.obj);
-    char* guid = _ZNK13mediaplatform4Data5bytesEv(ret[0]);
-    return strdup(guid);
+    struct shared_ptr ret = {.obj = nullptr, .ctrl_blk = nullptr};
+    _ZN17storeservicescore10DeviceGUID4guidEv(&ret, GUID.obj);
+    char* guid = ret.obj ? _ZNK13mediaplatform4Data5bytesEv(ret.obj) : nullptr;
+    char* result = guid ? strdup(guid) : nullptr;
+    release_shared(&ret);
+    return result;
 }
 
 /* Build a shared_ptr<HTTPMessage> with a control block that behaves like a
@@ -48,8 +77,10 @@ static char* get_guid() {
  *     the value and `delete` the block) is never invoked.  The previous code
  *     used a static buffer with refcount 0, which is invalid for a held
  *     shared_ptr.
- *   - the block is heap-allocated, so even if the library ever releases the
- *     last reference, freeing it is safe.
+ *   - the block is heap-allocated and the scope guards below release our
+ *     reference once the URLRequest that copied it has been destroyed, so
+ *     the emplace deallocator (operator delete == free under libc++) runs
+ *     exactly once.
  */
 static struct shared_ptr make_http_message(const char* url, const char* method) {
     uint8_t* ptr = (uint8_t*)calloc(1, 512);
@@ -65,6 +96,7 @@ static struct shared_ptr make_http_message(const char* url, const char* method) 
 
 static char* get_dev_token_impl() {
     struct shared_ptr httpMessage = make_http_message("https://sf-api-token-service.itunes.apple.com/apiToken", "GET");
+    shared_scope hm_scope = { &httpMessage };
 
     /* URLRequest is larger than 512 bytes; a 512-byte buffer overflowed in
        the constructor and corrupted the caller's stack frame (crashing the
@@ -73,6 +105,7 @@ static char* get_dev_token_impl() {
     uint8_t urlRequest[2048];
     memset(urlRequest, 0, sizeof(urlRequest));
     _ZN17storeservicescore10URLRequestC2ERKNSt6__ndk110shared_ptrIN13mediaplatform11HTTPMessageEEERKNS2_INS_14RequestContextEEE(urlRequest, &httpMessage, &g_reqCtx);
+    url_request_scope req_scope = { urlRequest };
     union std_string clientIdName = new_std_string("clientId");
     union std_string clientIdValue = new_std_string("musicAndroid");
     _ZN17storeservicescore10URLRequest19setRequestParameterERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEES9_(urlRequest, &clientIdName, &clientIdValue);
@@ -108,6 +141,7 @@ static char* get_music_user_token_impl(const char* authToken) {
     if (!guid) return nullptr;
 
     struct shared_ptr httpMessage = make_http_message("https://play.itunes.apple.com/WebObjects/MZPlay.woa/wa/createMusicToken", "POST");
+    shared_scope hm_scope = { &httpMessage };
 
     union std_string ctHeader = new_std_string("Content-Type");
     union std_string ctValue = new_std_string("application/json; charset=UTF-8");
@@ -142,6 +176,7 @@ static char* get_music_user_token_impl(const char* authToken) {
     uint8_t urlRequest[2048];
     memset(urlRequest, 0, sizeof(urlRequest));
     _ZN17storeservicescore10URLRequestC2ERKNSt6__ndk110shared_ptrIN13mediaplatform11HTTPMessageEEERKNS2_INS_14RequestContextEEE(urlRequest, &httpMessage, &g_reqCtx);
+    url_request_scope req_scope = { urlRequest };
     _ZN17storeservicescore10URLRequest3runEv(urlRequest);
     free(guid);
 
@@ -178,30 +213,31 @@ static char* get_account_storefront_id_impl() {
     const char* region_str = std_string_data(region);
     if (region_str) {
         char* result = strdup(region_str);
+        release_string(region);
         free(region);
         return result;
     }
+    release_string(region);
     free(region);
     return nullptr;
 }
 
 int offline_available_impl() {
-    struct shared_ptr* fairplay = (struct shared_ptr*)malloc(16);
-    memset(fairplay, 0, 16);
-    _ZN17storeservicescore14RequestContext8fairPlayEv(fairplay, g_reqCtx.obj);
-    if (!fairplay->obj) {
-        free(fairplay);
-        return 0;
-    }
-    struct std_vector fairplay_status = _ZN17storeservicescore8FairPlay21getSubscriptionStatusEv(fairplay->obj);
+    struct shared_ptr fairplay = {.obj = nullptr, .ctrl_blk = nullptr};
+    _ZN17storeservicescore14RequestContext8fairPlayEv(&fairplay, g_reqCtx.obj);
+    if (!fairplay.obj) return 0;
+    struct std_vector fairplay_status = _ZN17storeservicescore8FairPlay21getSubscriptionStatusEv(fairplay.obj);
+    release_shared(&fairplay);
     char* begin_ptr = (char*)fairplay_status.begin;
     char* end_ptr = (char*)fairplay_status.end;
-    free(fairplay);
-    if (!begin_ptr || !end_ptr || (end_ptr - begin_ptr) < 32) return 0;
-    char* second_item_ptr = begin_ptr + 16;
-    int state = *(int*)((char*)second_item_ptr + 8);
-    if (state == 2 || state == 3) return 1;
-    return 0;
+    int result = 0;
+    if (begin_ptr && end_ptr && (end_ptr - begin_ptr) >= 32) {
+        char* second_item_ptr = begin_ptr + 16;
+        int state = *(int*)(second_item_ptr + 8);
+        if (state == 2 || state == 3) result = 1;
+    }
+    ::operator delete(fairplay_status.begin);
+    return result;
 }
 
 static bool write_token_file(const std::string& path, const std::string& content) {
