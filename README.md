@@ -92,6 +92,25 @@ docker run --privileged -p 12340:12340 \
   wrapper-lite:local
 ```
 
+### Prebuilt image (GHCR)
+
+Every push to `lite` publishes the image to GitHub Container Registry:
+
+```bash
+docker pull ghcr.io/worldobservationlog/wrapper-lite:latest
+docker run --privileged -p 12340:12340 \
+  -v ./rootfs/data:/app/rootfs/data \
+  -e USERNAME=... -e PASSWORD=... \
+  ghcr.io/worldobservationlog/wrapper-lite:latest
+```
+
+Tags: `latest` and `lite` follow the `lite` branch, and `sha-<commit>` pins
+one build. The image is `linux/amd64` only, because the bundled Android
+libraries are x86_64.
+
+The package is private when first published; set its visibility to public in
+the package settings if anonymous pulls should work.
+
 ## HTTP API
 
 All responses use:

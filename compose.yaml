@@ -1,5 +1,7 @@
 services:
   app:
+    # To run the published image instead of a local build, replace `build:`
+    # with `image: ghcr.io/worldobservationlog/wrapper-lite:latest`.
     build:
       context: .
       dockerfile: Dockerfile
