@@ -86,11 +86,18 @@ list.
 
 ```bash
 docker build -t wrapper-lite:local .
-docker run --privileged -p 12340:12340 \
-  -v ./rootfs/data:/app/rootfs/data \
+docker run -p 12340:12340 \
+  -v ./rootfs/data:/data \
   -e USERNAME=... -e PASSWORD=... \
   wrapper-lite:local
 ```
+
+No `--privileged`, no namespace or mount permissions and no `/system`
+symlinks are needed — not even in rootless Podman or WSL containers: `lite`
+is an Android (bionic) binary whose ELF interpreter is patched at build time
+to `/app/lib/linker64`, so at runtime it is just a plain Linux program that
+loads the bundled Android libraries through `LD_LIBRARY_PATH=/app/lib`. The
+data volume mounts at `/data` (the `--base-dir`).
 
 ### Prebuilt image (GHCR)
 
@@ -98,8 +105,8 @@ Every push to `lite` publishes the image to GitHub Container Registry:
 
 ```bash
 docker pull ghcr.io/worldobservationlog/wrapper-lite:latest
-docker run --privileged -p 12340:12340 \
-  -v ./rootfs/data:/app/rootfs/data \
+docker run -p 12340:12340 \
+  -v ./rootfs/data:/data \
   -e USERNAME=... -e PASSWORD=... \
   ghcr.io/worldobservationlog/wrapper-lite:latest
 ```
@@ -199,9 +206,14 @@ Environment variables (fallbacks; command-line flags take precedence):
 ## Build notes
 
 - Release: TLS verification is on by default and uses the bundled Mozilla CA
-  bundle (`rootfs/system/etc/security/cacert.pem`, installed as
-  `/system/etc/security/cacert.pem`). Pass `--debug` to disable verification
-  temporarily, or `--ca-bundle` to use a different bundle.
+  bundle (`rootfs/system/etc/security/cacert.pem`; the Docker image installs
+  it as `/app/etc/cacert.pem` and selects it via `LITE_CA_BUNDLE`). Pass
+  `--debug` to disable verification temporarily, or `--ca-bundle` to use a
+  different bundle.
+- `LITE_INTERP` (CMake, default `/system/bin/linker64`) bakes the ELF
+  interpreter path into `lite`. The Docker build passes
+  `-DLITE_INTERP=/app/lib/linker64`, which is what lets the image run `lite`
+  directly without a `/system` symlink.
 - Debug: TLS verification is disabled by default.
 - DNS: the Android layer uses `--dns` / `LITE_DNS` when given, otherwise the
   host's `/etc/resolv.conf`; the built-in `8.8.8.8,8.8.4.4` is only a

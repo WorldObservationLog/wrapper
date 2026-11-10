@@ -99,6 +99,13 @@ set_target_properties(lite PROPERTIES
 
 target_compile_options(lite PRIVATE -Wno-unused-variable)
 
+# ELF interpreter path baked into lite.  The default keeps the Android layout
+# expected by the QEMU guest and the chroot launchers; the Docker build passes
+# -DLITE_INTERP=/app/lib/linker64 so lite runs as a plain Linux program with
+# the bundled linker and libraries, without any /system symlink at runtime.
+set(LITE_INTERP "/system/bin/linker64" CACHE STRING "ELF interpreter path baked into lite")
+target_link_options(lite PRIVATE "-Wl,--dynamic-linker=${LITE_INTERP}")
+
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
     target_compile_definitions(lite PRIVATE LITE_RELEASE)
 endif()

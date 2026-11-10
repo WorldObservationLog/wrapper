@@ -1,18 +1,18 @@
 services:
   app:
-    # To run the published image instead of a local build, replace `build:`
-    # with `image: ghcr.io/worldobservationlog/wrapper-lite:latest`.
+    # `image:` names the locally built image; change it to
+    # `ghcr.io/worldobservationlog/wrapper-lite:latest` (and drop `build:`)
+    # to run the published image instead.
+    image: wrapper-lite:local
     build:
       context: .
       dockerfile: Dockerfile
       args:
         NDK_VERSION: 23
     volumes:
-      - ./rootfs/data:/app/rootfs/data
+      - ./rootfs/data:/data
     ports:
       - "12340:12340"
     environment:
       USERNAME: ${USERNAME}
       PASSWORD: ${PASSWORD}
-    security_opt:
-      - seccomp:unconfined
