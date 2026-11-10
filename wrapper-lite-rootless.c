@@ -116,8 +116,12 @@ int main(int argc, char *argv[], char *envp[]) {
     }
 
     if (child_proc > 0) {
-        wait(NULL);
-        return 0;
+        int status = 0;
+        if (wait(&status) == -1) {
+            perror("wait");
+            return 1;
+        }
+        return WIFEXITED(status) ? WEXITSTATUS(status) : 1;
     }
 
     if (mkdir("./rootfs/dev", 0755) != 0 && errno != EEXIST) {
