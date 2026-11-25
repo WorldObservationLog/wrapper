@@ -57,7 +57,7 @@ Android.
 c++ -std=c++11 -O2 -o wrapper-lite-qemu wrapper-lite-qemu.cpp
 
 # login first (forwards --login to the guest lite), then serve
-./wrapper-lite-qemu --login user:pass --code-from-file
+./wrapper-lite-qemu --login user:pass
 ./wrapper-lite-qemu
 ```
 
